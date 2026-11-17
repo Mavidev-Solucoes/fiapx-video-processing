@@ -93,4 +93,47 @@ if [[ "$before" != "$after" ]]; then echo "Duplicate reprocessed video"; exit 1;
 
 invalid="$(upload /tmp/fiapx-invalid.mp4 invalid.mp4)"
 wait_status "$invalid" failed
-echo "OK: two workers, ZIP, private download, duplicate suppression and invalid video failure"
+echo "== Verify terminal-failure notifications and ownership =="
+notices="$(curl --fail-with-body -fsS -H "Authorization: Bearer $token_a" \
+  http://127.0.0.1:8080/api/notifications)"
+notice_id="$(printf '%s' "$notices" | python3 -c 'import json,sys; d=json.load(sys.stdin); n=[x for x in d["notifications"] if x["jobId"]==sys.argv[1]]; assert len(n)==1, n; assert not n[0].get("readAt"); print(n[0]["id"])' "$invalid")"
+count_b="$(curl --fail-with-body -fsS -H "Authorization: Bearer $token_b" \
+  http://127.0.0.1:8080/api/notifications | \
+  python3 -c 'import json,sys; print(len(json.load(sys.stdin)["notifications"]))')"
+if [[ "$count_b" != "0" ]]; then echo "Notifications leaked to another account"; exit 1; fi
+code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+  -H "Authorization: Bearer $token_b" \
+  "http://127.0.0.1:8080/api/notifications/$notice_id/read")"
+if [[ "$code" != "404" ]]; then echo "Other user marked notification read: $code"; exit 1; fi
+curl --fail-with-body -fsS -X POST -H "Authorization: Bearer $token_a" \
+  "http://127.0.0.1:8080/api/notifications/$notice_id/read"
+curl --fail-with-body -fsS -H "Authorization: Bearer $token_a" \
+  http://127.0.0.1:8080/api/notifications |
+  python3 -c 'import json,sys; d=json.load(sys.stdin); n=[x for x in d["notifications"] if str(x["id"])==sys.argv[1]]; assert len(n)==1 and n[0].get("readAt")' "$notice_id"
+echo "OK: failure notification was delivered, private, and marked read"
+
+echo "== Simulate an expired worker lease and verify recovery =="
+docker compose stop worker
+recovery="$(upload /tmp/fiapx-real.mp4 recovery.mp4)"
+dispatched=0
+for i in $(seq 1 40); do
+  dispatched="$(docker compose exec -T postgres psql -U fiapx -d fiapx -Atc \
+    "SELECT count(*) FROM video_job_outbox WHERE job_id='$recovery' AND published_at IS NOT NULL")"
+  if [[ "$dispatched" == 1 ]]; then break; fi
+  sleep 2
+done
+if [[ "$dispatched" != 1 ]]; then echo "Recovery job was not enqueued"; exit 1; fi
+docker compose exec -T postgres psql -U fiapx -d fiapx -v ON_ERROR_STOP=1 -c \
+  "UPDATE video_jobs SET status='processing',
+   lease_token='916fb91d-b331-45e3-a640-ef5f8c9b15c7',
+   lease_expires_at=NOW()-INTERVAL '1 minute', attempt_count=1
+   WHERE id='$recovery' AND status='queued'"
+docker compose start worker
+wait_status "$recovery" completed
+attempt="$(docker compose exec -T postgres psql -U fiapx -d fiapx -Atc \
+  "SELECT attempt_count FROM video_jobs WHERE id='$recovery'")"
+if [[ "$attempt" != "2" ]]; then echo "Expired lease did not recover correctly: $attempt"; exit 1; fi
+echo "OK: expired lease was reclaimed and video processed"
+
+echo "OK: two workers, ZIP, private download, duplicate suppression, notifications and lease recovery"
+
