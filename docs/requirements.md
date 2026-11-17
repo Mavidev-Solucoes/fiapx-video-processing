@@ -4,14 +4,14 @@ Fonte: `POSTECH - SOAT - Fase 5 - Hacka.pdf`, páginas 3 e 4.
 
 **Legenda:** *Planejado* = ainda não existe; *Fundação* = estrutura/configuração presente, integração pendente; *Parcial* = implementação sem fluxo de ponta a ponta.
 
-| Requisito FIAP | Critério de aceite proposto | Estado após PR #2 |
+| Requisito FIAP | Critério de aceite proposto | Estado após PR #3 |
 | --- | --- | --- |
 | Processar mais de um vídeo simultaneamente | Duas solicitações aceitas e concluídas com workers paralelos | Planejado |
-| Não perder requisição em picos | Job aceito permanece em banco e volta à fila após falha/restart | Planejado |
+| Não perder requisição em picos | Job aceito permanece em banco e volta à fila após falha/restart | Parcial: job + outbox em transação, dispatcher com confirmação e retry; processamento/consumo pendente |
 | Usuário e senha | Login com senha armazenada por hash; token nas rotas privadas | Implementado: bcrypt + token HS256 (CI pendente de validação) |
-| Status de vídeos por usuário | Listagem restrita ao dono, com estados e erros | Parcial: consultas protegidas implementadas; criação/atualização de jobs pendente |
+| Status de vídeos por usuário | Listagem restrita ao dono, com estados e erros | Parcial: upload cria jobs e consultas são filtradas; estados finais pendentes |
 | Usuário pode ser notificado em erro | Notificação visível ou outro canal demonstrável quando job falha | Planejado |
-| Persistência | Banco e armazenamento persistentes, com migração reproduzível | Parcial: tabela e repositório PostgreSQL; arquivos no MinIO ainda não integrados |
+| Persistência | Banco e armazenamento persistentes, com migração reproduzível | Implementados PostgreSQL, MinIO e migração de outbox em Compose; fluxo final pendente |
 | Arquitetura escalável | API desacoplada do worker; escalar réplicas dos workers | Fundação |
 | GitHub | Código versionado em repositório | Fundação |
 | Testes | Testes unitários e de integração executados no CI | Parcial: testes ZIP, token, autenticação e isolamento de usuários |

@@ -16,9 +16,10 @@ import (
 )
 
 type API struct {
-	users  store.Users
-	jobs   store.Jobs
-	tokens *auth.Tokens
+	users    store.Users
+	jobs     store.Jobs
+	tokens   *auth.Tokens
+	uploader Uploader
 }
 
 type credentials struct {
@@ -26,8 +27,11 @@ type credentials struct {
 	Password string `json:"password"`
 }
 
-func New(users store.Users, jobs store.Jobs, tokens *auth.Tokens) http.Handler {
+func New(users store.Users, jobs store.Jobs, tokens *auth.Tokens, uploads ...Uploader) http.Handler {
 	a := &API{users: users, jobs: jobs, tokens: tokens}
+	if len(uploads) > 0 {
+		a.uploader = uploads[0]
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"service": "fiapx-api", "status": "alive"})
@@ -36,6 +40,7 @@ func New(users store.Users, jobs store.Jobs, tokens *auth.Tokens) http.Handler {
 	mux.HandleFunc("POST /api/auth/login", a.login)
 	mux.HandleFunc("GET /api/me", a.protected(a.me))
 	mux.HandleFunc("GET /api/jobs", a.protected(a.listJobs))
+	mux.HandleFunc("POST /api/jobs", a.protected(a.uploadJob))
 	mux.HandleFunc("GET /api/jobs/{id}", a.protected(a.getJob))
 	return mux
 }

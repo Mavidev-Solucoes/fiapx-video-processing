@@ -2,7 +2,7 @@
 
 Projeto do Hackathon FIAP X. O objetivo é receber vídeos de usuários autenticados, processá-los em paralelo, gerar um ZIP com imagens extraídas, permitir download e acompanhar os estados dos trabalhos, sem perder solicitações aceitas em picos de demanda.
 
-> **Estado: implementação incremental (PR #2).** O projeto já possui registro/login com hash bcrypt, tokens de acesso assinados, consultas de perfil e consulta persistida de jobs **restritas ao usuário autenticado**. Ainda não há upload, publicação de jobs no RabbitMQ, consumo pelo worker, download, notificação de falhas ou CD completo.
+> **Estado: implementação incremental (PR #3).** Registro/login e leitura de jobs por usuário estão implementados. Agora a API recebe um vídeo autenticado, armazena no MinIO e registra o job + mensagem pendente em uma transação PostgreSQL. Um dispatcher publica a mensagem com confirmação no RabbitMQ; o worker, processamento/ZIP, download e notificações ainda serão implementados no PR seguinte.
 
 ## Componentes previstos
 
@@ -60,6 +60,7 @@ A API utiliza **hash bcrypt** para as senhas (12–72 bytes) e **Bearer JWT HS25
 | `POST /api/auth/login` | Não | Autentica e devolve token |
 | `GET /api/me` | Sim | Perfil do usuário |
 | `GET /api/jobs` | Sim | Lista até 100 jobs pertencentes ao usuário |
+| `POST /api/jobs` | Sim | Upload multipart (`video`) e aceitação assíncrona (HTTP 202) |
 | `GET /api/jobs/{id}` | Sim | Detalhe do job pertencente ao usuário; 404 para jobs de terceiros |
 | `GET /health/live` | Não | Liveness da API |
 
@@ -71,9 +72,9 @@ curl -X POST http://localhost:8080/api/auth/register \
   -d '{"email":"estudante@example.com","password":"uma-senha-bem-forte-2026"}'
 ```
 
-O resultado inclui `accessToken`. Envie o valor no cabeçalho `Authorization: Bearer <accessToken>` para acessar `/api/me` e `/api/jobs`. A lista estará vazia até o fluxo de upload e processamento ser implementado.
+O resultado inclui `accessToken`. Envie o valor no cabeçalho `Authorization: Bearer <accessToken>` para acessar `/api/me` e `/api/jobs`. A lista retorna os vídeos já enviados pelo usuário, inicialmente com estado `queued` até a implementação do worker.
 
-**Limitações atuais:** não há criação de jobs por API, processamento assíncrono, upload ou download neste PR. O banco PostgreSQL deve estar disponível para a API iniciar.
+**Limitações atuais:** o upload e o despacho durável dos jobs estão implementados, mas os vídeos continuam com status `queued` até a implementação do worker. Ainda não há ZIP, download ou notificação.
 
 ## Testes e CI
 
@@ -90,8 +91,26 @@ O workflow de GitHub Actions executa build, vet, testes/race e valida os Dockerf
 ## Próximas entregas (PRs separados)
 
 1. **Concluído neste PR:** registro/login, token assinado, autorização e leitura de jobs por usuário.
-2. **Próximo PR:** upload com tamanho limitado, persistência de entrada no MinIO e publicação recuperável de jobs no RabbitMQ.
+2. **Concluído neste PR:** upload com tamanho limitado, persistência no MinIO e publicação recuperável pelo outbox PostgreSQL/RabbitMQ.
 3. Worker funcional, retries, atualização persistente de status, armazenamento do ZIP, downloads autorizados e notificações de falha.
 4. Testes de concorrência/picos, integração, documentação final e demonstração de até 10 minutos.
 
 Confira [decisões de arquitetura](docs/architecture.md) e [matriz de requisitos](docs/requirements.md).
+
+## Upload de vídeo e despacho assíncrono (PR #3)
+
+Envie um vídeo em `POST /api/jobs` com autenticação Bearer, usando `multipart/form-data` e o campo de arquivo **`video`**. Extensões permitidas: `.mp4`, `.mov`, `.mkv`, `.webm` e `.avi`. Limite de **100 MiB** por upload. O retorno `202 Accepted` inclui o job com estado `queued` e o cabeçalho `Location: /api/jobs/{id}`.
+
+A API envia o arquivo ao MinIO (objeto privado por usuário/job). **Só considera o job aceito após inserir a linha de `video_jobs` e a entrada de `video_job_outbox` na mesma transação PostgreSQL.** O dispatcher lê as entradas pendentes com `FOR UPDATE SKIP LOCKED` e as publica na fila durável `fiapx.jobs`, usando mensagens persistentes e publisher confirms. Se RabbitMQ estiver indisponível, a entrada permanece pendente no banco e é tentada novamente. Uma queda após o publish e antes do commit pode gerar duplicidade; o worker deverá processar mensagens de forma idempotente no PR #4.
+
+Para volumes PostgreSQL já criados nos PRs anteriores, o serviço `schema-migrate` aplica `migrations/002_job_outbox.sql` automaticamente ao subir o Compose. Em volumes novos, o arquivo também é aplicado pelo PostgreSQL na inicialização. O serviço `minio-init` configura o bucket antes de a API aceitar uploads.
+
+Exemplo (substitua `TOKEN` por um token real):
+
+```bash
+curl -i -X POST http://localhost:8080/api/jobs \
+  -H 'Authorization: Bearer TOKEN' \
+  -F 'video=@./exemplo.mp4'
+```
+
+**Escopo atual:** o arquivo e o job são persistidos e a mensagem é enfileirada, mas ainda não há consumidor para concluir o processamento. Não use `docker compose down -v` se quiser manter os dados locais.

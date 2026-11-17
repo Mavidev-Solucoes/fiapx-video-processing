@@ -18,6 +18,17 @@ services:
       timeout: 5s
       retries: 12
 
+  schema-migrate:
+    image: postgres:16-alpine
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-fiapx-local-only}
+    volumes:
+      - ./migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["sh", "-ec", "psql -h postgres -U fiapx -d fiapx -v ON_ERROR_STOP=1 -f /migrations/002_job_outbox.sql"]
+
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     environment:
@@ -34,7 +45,7 @@ services:
       retries: 12
 
   minio:
-    image: minio/minio:latest
+    image: pgsty/silo:RELEASE.2026-11-12T00-00-00Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_USER:-fiapx}
@@ -46,11 +57,11 @@ services:
       - minio-data:/data
 
   minio-init:
-    image: minio/mc:latest
+    image: pgsty/mc:RELEASE.2026-11-12T00-00-00Z
     depends_on:
       - minio
     environment:
-      MINIO_ROOT_USER: ${POSTGRES_PASSWORD:-fiapx-local-only}
+      MINIO_ROOT_USER: ${MINIO_USER:-fiapx}
       MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-fiapx-local-only}
     entrypoint: >
       /bin/sh -c '
@@ -69,6 +80,8 @@ services:
       RABBITMQ_URL: "amqp://fiapx:${RABBITMQ_PASSWORD:-fiapx-local-only}@rabbitmq:5672/"
       S3_ENDPOINT: "http://minio:9000"
       S3_BUCKET: "fiapx-videos"
+      S3_ACCESS_KEY: "${MINIO_USER:-fiapx}"
+      S3_SECRET_KEY: "${MINIO_PASSWORD:-fiapx-local-only}"
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
@@ -76,8 +89,10 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-      minio:
-        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+      schema-migrate:
+        condition: service_completed_successfully
 
   worker:
     build:
@@ -88,13 +103,17 @@ services:
       RABBITMQ_URL: "amqp://fiapx:${RABBITMQ_PASSWORD:-fiapx-local-only}@rabbitmq:5672/"
       S3_ENDPOINT: "http://minio:9000"
       S3_BUCKET: "fiapx-videos"
+      S3_ACCESS_KEY: "${MINIO_USER:-fiapx}"
+      S3_SECRET_KEY: "${MINIO_PASSWORD:-fiapx-local-only}"
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-      minio:
-        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+      schema-migrate:
+        condition: service_completed_successfully
 
 volumes:
   postgres-data:
