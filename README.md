@@ -146,7 +146,7 @@ O workflow `.github/workflows/ci.yml` exige **cobertura mínima de 80,0% dos sta
 - O resultado consolidado é salvo como artifact **`go-coverage-combined`**, com `combined.out`, `combined-summary.txt` e `integration.out`. O comando `scripts/check-coverage.sh` exige no mínimo **80,0%**; `scripts/test-coverage-gate.sh` verifica esse limite em casos de fronteira.
 - Uma falha no gate impede o job de publicar as imagens no GHCR. Os relatórios são enviados como artifacts **antes** de validar o limite, permitindo diagnosticar regressões.
 
-**Resultado verificado:** **81,2% (775/955 statements)** na execução [CI #44176124778](https://github.com/Mavidev-Solucoes/fiapx-video-processing/actions/runs/44176124778), sem exclusão de packages. Os percentuais dependem do conjunto de testes e devem ser conferidos novamente a cada release. A cobertura indica linhas exercitadas, não substitui revisão da qualidade dos testes nem as asserções end-to-end.
+**Resultado verificado:** **81,0% (774/955 statements)** na execução [CI #44176884918](https://github.com/Mavidev-Solucoes/fiapx-video-processing/actions/runs/44176884918), sem exclusão de packages. Os percentuais dependem do conjunto de testes e devem ser conferidos novamente a cada release. A cobertura indica linhas exercitadas, não substitui revisão da qualidade dos testes nem as asserções end-to-end.
 
 Os scripts E2E apagam volumes temporários de teste ao finalizar. **Não execute os scripts de integração sobre dados importantes**. O comando `bash scripts/deploy-local.sh` é apropriado para executar a stack local sem apagar dados.
 
