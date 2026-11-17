@@ -21,6 +21,7 @@ type API struct {
 	tokens     *auth.Tokens
 	uploader   Uploader
 	downloader Downloader
+	notifications Notifications
 }
 
 type credentials struct {
@@ -29,15 +30,19 @@ type credentials struct {
 }
 
 func New(users store.Users, jobs store.Jobs, tokens *auth.Tokens, uploads ...Uploader) http.Handler {
-	return newHandler(users, jobs, tokens, nil, uploads...)
+	return newHandler(users, jobs, tokens, nil, nil, uploads...)
 }
 
 func NewWithDownload(users store.Users, jobs store.Jobs, tokens *auth.Tokens, uploader Uploader, downloader Downloader) http.Handler {
-	return newHandler(users, jobs, tokens, downloader, uploader)
+	return newHandler(users, jobs, tokens, downloader, nil, uploader)
 }
 
-func newHandler(users store.Users, jobs store.Jobs, tokens *auth.Tokens, downloader Downloader, uploads ...Uploader) http.Handler {
-	a := &API{users: users, jobs: jobs, tokens: tokens, downloader: downloader}
+func NewWithNotifications(users store.Users, jobs store.Jobs, tokens *auth.Tokens, uploader Uploader, downloader Downloader, notifications Notifications) http.Handler {
+	return newHandler(users, jobs, tokens, downloader, notifications, uploader)
+}
+
+func newHandler(users store.Users, jobs store.Jobs, tokens *auth.Tokens, downloader Downloader, notifications Notifications, uploads ...Uploader) http.Handler {
+	a := &API{users: users, jobs: jobs, tokens: tokens, downloader: downloader, notifications: notifications}
 	if len(uploads) > 0 {
 		a.uploader = uploads[0]
 	}
@@ -52,6 +57,8 @@ func newHandler(users store.Users, jobs store.Jobs, tokens *auth.Tokens, downloa
 	mux.HandleFunc("POST /api/jobs", a.protected(a.uploadJob))
 	mux.HandleFunc("GET /api/jobs/{id}", a.protected(a.getJob))
 	mux.HandleFunc("GET /api/jobs/{id}/download", a.protected(a.downloadJob))
+	mux.HandleFunc("GET /api/notifications", a.protected(a.listNotifications))
+	mux.HandleFunc("POST /api/notifications/{id}/read", a.protected(a.markNotificationRead))
 	return mux
 }
 

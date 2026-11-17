@@ -50,7 +50,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:              addr,
-		Handler:           httpapi.NewWithDownload(database, database, tokens, intake.New(objects, database), download.New(database, objects)),
+		Handler:           httpapi.NewWithNotifications(database, database, tokens, intake.New(objects, database), download.New(database, objects), database),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       2 * time.Minute,
 		WriteTimeout:      2 * time.Minute,
