@@ -1,0 +1,12 @@
+FROM golang:1.23-alpine AS build
+WORKDIR /src
+COPY go.mod ./
+COPY cmd ./cmd
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
+
+FROM alpine:3.21
+RUN addgroup -S fiapx && adduser -S -G fiapx fiapx
+COPY --from=build /out/api /usr/local/bin/api
+USER fiapx
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/api"]

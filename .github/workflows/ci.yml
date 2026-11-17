@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go build, vet and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: gofmt
+        run: |
+          test -z "$(gofmt -l cmd internal)"
+      - name: Build
+        run: go build ./cmd/api ./cmd/worker
+      - name: Vet
+        run: go vet ./...
+      - name: Tests (race detector)
+        run: go test -race ./...
+
+  containers:
+    name: Docker and Compose validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose
+        run: docker compose config --quiet
+      - name: Build API image
+        run: docker build -f deploy/Dockerfile.api -t fiapx-api:ci .
+      - name: Build worker image
+        run: docker build -f deploy/Dockerfile.worker -t fiapx-worker:ci .

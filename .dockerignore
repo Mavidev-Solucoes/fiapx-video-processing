@@ -1,0 +1,13 @@
+.git
+.github
+docs
+README.md
+*.md
+.env
+.env.*
+uploads
+outputs
+temp
+tmp
+bin
+dist
