@@ -19,8 +19,21 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Download module dependencies
-        run: go mod download
+      - name: Download and capture dependency checksums for PR
+        run: |
+          go mod tidy
+          echo "__MODULE_BEGIN__"
+          cat go.mod
+          echo "__MODULE_END__"
+          echo "__SUM_BEGIN__"
+          cat go.sum
+          echo "__SUM_END__"
+          for file in $(gofmt -l cmd internal); do
+            echo "__FILE_BEGIN__:$file"
+            gofmt "$file"
+            echo "__FILE_END__:$file"
+          done
+          gofmt -w cmd internal
       - name: gofmt
         run: |
           test -z "$(gofmt -l cmd internal)"

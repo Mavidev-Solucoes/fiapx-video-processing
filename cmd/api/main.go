@@ -12,6 +12,9 @@ import (
 
 	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/auth"
 	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/httpapi"
+	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/intake"
+	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/queue"
+	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/storage"
 	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/store"
 )
 
@@ -34,12 +37,22 @@ func main() {
 	}
 	defer database.DB.Close()
 
+	objects, err := storage.NewFromEnv()
+	if err != nil {
+		log.Fatalf("storage configuration: %v", err)
+	}
+	publisher, err := queue.New(os.Getenv("RABBITMQ_URL"))
+	if err != nil {
+		log.Fatalf("broker configuration: %v", err)
+	}
+	go dispatchPending(ctx, database, publisher)
+
 	server := &http.Server{
 		Addr:              addr,
-		Handler:           httpapi.New(database, database, tokens),
+		Handler:           httpapi.New(database, database, tokens, intake.New(objects, database)),
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       20 * time.Second,
-		WriteTimeout:      30 * time.Second,
+		ReadTimeout:       2 * time.Minute,
+		WriteTimeout:      2 * time.Minute,
 		IdleTimeout:       60 * time.Second,
 	}
 	go func() {
@@ -54,5 +67,25 @@ func main() {
 	log.Printf("FIAP X API listening on %s", addr)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
+	}
+}
+
+func dispatchPending(ctx context.Context, database *store.Postgres, publisher *queue.Rabbit) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		batchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		count, err := database.PublishPending(batchCtx, publisher)
+		cancel()
+		if err != nil && ctx.Err() == nil {
+			log.Printf("outbox retry scheduled: %v", err)
+		} else if count > 0 {
+			log.Printf("published %d queued video jobs", count)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
 	}
 }
