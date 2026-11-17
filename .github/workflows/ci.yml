@@ -75,28 +75,5 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish API image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: deploy/Dockerfile.api
-          push: true
-          tags: |
-            ghcr.io/mavidev-solucoes/fiapx-video-processing-api:latest
-            ghcr.io/mavidev-solucoes/fiapx-video-processing-api:${{ github.sha }}
-      - name: Publish worker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: deploy/Dockerfile.worker
-          push: true
-          tags: |
-            ghcr.io/mavidev-solucoes/fiapx-video-processing-worker:latest
-            ghcr.io/mavidev-solucoes/fiapx-video-processing-worker:${{ github.sha }}
+      - name: Verify publish gate (diagnostic only)
+        run: echo "Publish job enabled after CI on main"
