@@ -43,9 +43,21 @@ func (s *Client) Put(ctx context.Context, key string, body io.Reader, size int64
 	if _, err := s.client.PutObject(ctx, s.bucket, key, body, size, minio.PutObjectOptions{
 		ContentType: contentType,
 	}); err != nil {
-		return fmt.Errorf("store uploaded video: %w", err)
+		return fmt.Errorf("store object: %w", err)
 	}
 	return nil
+}
+
+func (s *Client) Get(ctx context.Context, key string) (io.ReadCloser, error) {
+	object, err := s.client.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("open stored object: %w", err)
+	}
+	if _, err := object.Stat(); err != nil {
+		_ = object.Close()
+		return nil, fmt.Errorf("stat stored object: %w", err)
+	}
+	return object, nil
 }
 
 func (s *Client) Delete(ctx context.Context, key string) error {
