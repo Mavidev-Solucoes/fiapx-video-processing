@@ -27,7 +27,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: ["sh", "-ec", "psql -h postgres -U fiapx -d fiapx -v ON_ERROR_STOP=1 -f /migrations/002_job_outbox.sql"]
+    command: ["sh", "-ec", "psql -h postgres -U fiapx -d fiapx -v ON_ERROR_STOP=1 -f /migrations/002_job_outbox.sql && psql -h postgres -U fiapx -d fiapx -v ON_ERROR_STOP=1 -f /migrations/003_worker_leases.sql"]
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine

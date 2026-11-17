@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/auth"
+	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/download"
 	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/httpapi"
 	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/intake"
 	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/queue"
@@ -49,7 +50,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:              addr,
-		Handler:           httpapi.New(database, database, tokens, intake.New(objects, database)),
+		Handler:           httpapi.NewWithDownload(database, database, tokens, intake.New(objects, database), download.New(database, objects)),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       2 * time.Minute,
 		WriteTimeout:      2 * time.Minute,

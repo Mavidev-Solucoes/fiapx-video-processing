@@ -4,17 +4,17 @@ Fonte: `POSTECH - SOAT - Fase 5 - Hacka.pdf`, páginas 3 e 4.
 
 **Legenda:** *Planejado* = ainda não existe; *Fundação* = estrutura/configuração presente, integração pendente; *Parcial* = implementação sem fluxo de ponta a ponta.
 
-| Requisito FIAP | Critério de aceite proposto | Estado após PR #3 |
+| Requisito FIAP | Critério de aceite proposto | Estado após PR #4 |
 | --- | --- | --- |
-| Processar mais de um vídeo simultaneamente | Duas solicitações aceitas e concluídas com workers paralelos | Planejado |
-| Não perder requisição em picos | Job aceito permanece em banco e volta à fila após falha/restart | Parcial: job + outbox em transação, dispatcher com confirmação e retry; processamento/consumo pendente |
+| Processar mais de um vídeo simultaneamente | Duas solicitações aceitas e concluídas com workers paralelos | Implementado; smoke-processing.sh verifica duas réplicas |
+| Não perder requisição em picos | Job aceito permanece em banco e volta à fila após falha/restart | Implementado: outbox, lease, ACK manual e recuperação; falta demonstração com kill de worker |
 | Usuário e senha | Login com senha armazenada por hash; token nas rotas privadas | Implementado: bcrypt + token HS256 (CI pendente de validação) |
-| Status de vídeos por usuário | Listagem restrita ao dono, com estados e erros | Parcial: upload cria jobs e consultas são filtradas; estados finais pendentes |
+| Status de vídeos por usuário | Listagem restrita ao dono, com estados e erros | Implementado: queued/processing/completed/failed e consultas privadas |
 | Usuário pode ser notificado em erro | Notificação visível ou outro canal demonstrável quando job falha | Planejado |
 | Persistência | Banco e armazenamento persistentes, com migração reproduzível | Implementados PostgreSQL, MinIO e migração de outbox em Compose; fluxo final pendente |
-| Arquitetura escalável | API desacoplada do worker; escalar réplicas dos workers | Fundação |
+| Arquitetura escalável | API desacoplada do worker; escalar réplicas dos workers | Implementado: workers escaláveis, prefetch 1 |
 | GitHub | Código versionado em repositório | Fundação |
-| Testes | Testes unitários e de integração executados no CI | Parcial: testes ZIP, token, autenticação e isolamento de usuários |
+| Testes | Testes unitários e de integração executados no CI | Implementado: testes unitários e E2E com FFmpeg, ZIP, duplicidade e isolamento |
 | CI/CD | Workflow de testes, build, imagens e entrega reproduzível | Fundação (CI; CD pendente) |
 | Documentação arquitetural | Diagrama, decisões, fluxos, erros e como reproduzir | Fundação |
 | Scripts de recursos | DDL de banco e Compose | Fundação |
