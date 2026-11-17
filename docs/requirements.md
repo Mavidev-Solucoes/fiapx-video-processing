@@ -13,7 +13,7 @@ Base: enunciado `POSTECH - SOAT - Fase 5 - Hacka.pdf`, páginas 3–4. Esta matr
 | Arquitetura escalável | API/worker separados, escaláveis por `--scale worker=N` | `cmd/api`, `cmd/worker`, scripts |
 | Versionamento GitHub | Repositório com commits e PRs isolados | Histórico do GitHub |
 | Testes e automação | Go race tests, build, vet, Docker Compose, dois testes E2E | `.github/workflows/ci.yml` |
-| CI/CD | Validação em PR e imagens GHCR após CI verde no main; deploy Compose reproduzível | `.github/workflows/cd.yml`, `scripts/deploy-release.sh` |
+| CI/CD | Validação em PR e imagens GHCR após CI verde no main; deploy Compose reproduzível | `.github/workflows/ci.yml` (job `publish`), `scripts/deploy-release.sh` |
 | Documentação de arquitetura | Diagrama, decisões, fluxos e limitações | `docs/architecture.md` |
 | Scripts de criação de recursos | Compose, migrations e scripts de deployment | `docker-compose.yml`, `migrations/`, `scripts/` |
 | Vídeo de até 10 minutos | Demonstrar login, upload, processamento, ZIP, falha, aviso e evidência CI | Pendente: gravação e link da apresentação |

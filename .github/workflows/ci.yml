@@ -64,3 +64,33 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run two-worker processing and download smoke test
         run: bash scripts/smoke-processing.sh
+
+
+  publish:
+    name: Publish verified API and worker images
+    needs: [go, containers, intake, processing]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login to GitHub Container Registry
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io \
+            --username "$GITHUB_ACTOR" --password-stdin
+      - name: Build and publish API image
+        run: |
+          image=ghcr.io/mavidev-solucoes/fiapx-video-processing-api
+          docker build -f deploy/Dockerfile.api -t "$image:latest" -t "$image:$GITHUB_SHA" .
+          docker push "$image:$GITHUB_SHA"
+          docker push "$image:latest"
+      - name: Build and publish worker image
+        run: |
+          image=ghcr.io/mavidev-solucoes/fiapx-video-processing-worker
+          docker build -f deploy/Dockerfile.worker -t "$image:latest" -t "$image:$GITHUB_SHA" .
+          docker push "$image:$GITHUB_SHA"
+          docker push "$image:latest"
