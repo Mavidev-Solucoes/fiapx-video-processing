@@ -1,0 +1,38 @@
+groups:
+  - name: fiapx-operational-health
+    rules:
+      - alert: FIAPXAPIMetricsUnavailable
+        expr: up{job="fiapx-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "FIAP X API metrics endpoint is unavailable"
+      - alert: FIAPXQueueMetricsUnavailable
+        expr: up{job="rabbitmq-queues"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RabbitMQ exporter is unavailable"
+      - alert: FIAPXNoWorkerConsumers
+        expr: rabbitmq_detailed_queue_consumers{queue="fiapx.jobs"} == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No processing workers consuming FIAP X queue"
+      - alert: FIAPXQueueBlocked
+        expr: fiapx_oldest_queued_age_seconds > 120
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "A video has waited more than two minutes for processing"
+      - alert: FIAPXOutboxBacklog
+        expr: fiapx_outbox_pending > 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Transactional outbox has more than ten unpublished jobs"

@@ -66,9 +66,18 @@ jobs:
         run: bash scripts/smoke-processing.sh
 
 
+  monitoring:
+    name: Integration smoke - monitoring stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Grafana dashboard, Prometheus scrapes and job metrics
+        run: bash scripts/smoke-monitoring.sh
+
   publish:
     name: Publish verified API and worker images
-    needs: [go, containers, intake, processing]
+    needs: [go, containers, intake, processing, monitoring]
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     permissions:

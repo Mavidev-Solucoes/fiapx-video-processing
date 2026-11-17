@@ -14,6 +14,7 @@ import (
 	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/download"
 	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/httpapi"
 	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/intake"
+	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/monitoring"
 	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/queue"
 	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/storage"
 	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/store"
@@ -48,6 +49,22 @@ func main() {
 	}
 	go dispatchPending(ctx, database, publisher)
 
+	metricsAddr := os.Getenv("METRICS_ADDR")
+	if metricsAddr == "" {
+		metricsAddr = ":9091"
+	}
+	metricsServer := &http.Server{
+		Addr:              metricsAddr,
+		Handler:           monitoring.Handler(monitoring.Postgres{DB: database.DB}),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() {
+		log.Printf("FIAP X metrics listening on %s (internal network only)", metricsAddr)
+		if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("metrics server: %v", err)
+		}
+	}()
+
 	server := &http.Server{
 		Addr:              addr,
 		Handler:           httpapi.NewWithNotifications(database, database, tokens, intake.New(objects, database), download.New(database, objects), database),
@@ -62,6 +79,9 @@ func main() {
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			log.Printf("shutdown failed: %v", err)
+		}
+		if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+			log.Printf("metrics shutdown failed: %v", err)
 		}
 	}()
 
