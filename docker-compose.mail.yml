@@ -3,7 +3,7 @@
 # docker compose -f docker-compose.yml -f docker-compose.mail.yml --profile monitoring up -d --build
 services:
   mailpit:
-    image: axllent/mailpit:v1.33.1
+    image: axllent/mailpit:v1.34.0
     environment:
       MP_DATABASE: /data/mailpit.db
       MP_MAX_MESSAGES: "500"
