@@ -76,11 +76,11 @@ When a worker permanently marks a video as `failed`, it persists the in-app noti
 
 Run `bash scripts/deploy-local.sh` from the repository root. It starts the application, Grafana, and a Mailpit SMTP capture inbox at **http://localhost:8025/**. Register with a sample email, upload an invalid `.mp4`, and compare the `failed` job/in-app alert with the captured message in Mailpit.
 
-The local-only `docker-compose.mail.yml` overlay sets `SMTP_HOST=mailpit`, port `1025` and permits plaintext SMTP **only for the Mailpit container**. Messages are captured locally and are not forwarded to recipients. To run without this overlay, use the base Docker Compose configuration.
+The local-only `docker-compose.mail.yml` overlay sets `SMTP_HOST=mailpit`, port `1025` and uses **certificate-verified implicit TLS** for the Mailpit container, using a locally generated CA certificate. Messages are captured locally and are not forwarded to recipients. To run without this overlay, use the base Docker Compose configuration.
 
 ### Real SMTP provider
 
-Set `SMTP_HOST`, `SMTP_PORT` (587 by default), `SMTP_FROM`, and optionally `SMTP_USERNAME` plus `SMTP_PASSWORD` using local environment variables or an uncommitted `.env` file. External relays **must support STARTTLS** (TLS certificate verification enforced). Implicit TLS on port 465 is not supported. Do not use the local Mailpit overlay in production.
+Set `SMTP_HOST`, `SMTP_PORT` (465 by default), `SMTP_FROM`, and optionally `SMTP_USERNAME` plus `SMTP_PASSWORD` using local environment variables or an uncommitted `.env` file. External relays **must support implicit TLS** (commonly port 465) with certificate and hostname verification. STARTTLS on port 587 is not supported by this version. For a custom private CA, set `SMTP_CA_FILE` to its PEM certificate. Do not use the local Mailpit overlay in production.
 
 When `SMTP_HOST` is absent, in-app notifications continue to work and email intents remain in the database. After configuring SMTP, pending messages are retried (maximum 8 attempts). Delivery is *at least once to the SMTP relay*, not guaranteed delivery to the external inbox; duplicates are possible if the process crashes between SMTP acceptance and the database commit. A production deployment needs user email verification and abuse/rate limiting before enabling open registration.
 

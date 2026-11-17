@@ -1,0 +1,57 @@
+# LOCAL FIAP demonstration only: generate a self-signed trusted certificate
+# and capture emails in Mailpit. External SMTP uses system-trusted certificates.
+services:
+  mailpit-cert-init:
+    image: alpine:3.21
+    volumes:
+      - mailpit-cert-private:/certs
+      - mailpit-ca-public:/ca
+    command: >
+      sh -ec '
+      apk add --no-cache openssl >/dev/null;
+      if [ ! -s /certs/cert.pem ]; then
+        openssl req -x509 -newkey rsa:2048 -nodes
+          -keyout /certs/key.pem -out /certs/cert.pem
+          -sha256 -days 365 -subj "/CN=mailpit"
+          -addext "subjectAltName=DNS:mailpit";
+      fi;
+      cp /certs/cert.pem /ca/cert.pem;
+      chmod 600 /certs/key.pem;
+      chmod 644 /certs/cert.pem /ca/cert.pem;
+      '
+
+  mailpit:
+    image: axllent/mailpit:v1.34.0
+    environment:
+      MP_DATABASE: /data/mailpit.db
+      MP_MAX_MESSAGES: "500"
+      MP_SMTP_TLS_CERT: /etc/mailpit/cert.pem
+      MP_SMTP_TLS_KEY: /etc/mailpit/key.pem
+      MP_SMTP_REQUIRE_TLS: "true"
+    volumes:
+      - mailpit-data:/data
+      - mailpit-cert-private:/etc/mailpit:ro
+    ports:
+      - "127.0.0.1:8025:8025"
+    depends_on:
+      mailpit-cert-init:
+        condition: service_completed_successfully
+
+  api:
+    environment:
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_FROM: "notifications@fiapx.test"
+      SMTP_USERNAME: ""
+      SMTP_PASSWORD: ""
+      SMTP_CA_FILE: /etc/fiapx/smtp-ca/cert.pem
+    volumes:
+      - mailpit-ca-public:/etc/fiapx/smtp-ca:ro
+    depends_on:
+      mailpit:
+        condition: service_started
+
+volumes:
+  mailpit-data:
+  mailpit-cert-private:
+  mailpit-ca-public:

@@ -44,7 +44,7 @@ flowchart TD
 
 Na falha terminal, o worker persiste **status `failed` + notificação in-app + intenção de e-mail** na mesma transação PostgreSQL. A tabela `notification_email_outbox` tem chave única para `notification_id`; um dispatcher assíncrono na API consulta lotes com `FOR UPDATE SKIP LOCKED`, envia ao SMTP e grava confirmação do relay. Falhas geram tentativas limitadas com backoff, sem interromper uploads/processamento.
 
-O overlay Compose `docker-compose.mail.yml` oferece Mailpit para demonstração em `http://localhost:8025/`, com SMTP acessível somente dentro da rede Docker. Para um relay real, `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM` e eventuais credenciais são configurados fora do Git; STARTTLS é obrigatório. Sem SMTP, os avisos in-app continuam disponíveis e os emails ficam pendentes até configuração.
+O overlay Compose `docker-compose.mail.yml` oferece Mailpit para demonstração em `http://localhost:8025/`, com SMTP com TLS implícito e certificado de demonstração confiável somente dentro do Compose. Para um relay real, `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM` e eventuais credenciais são configurados fora do Git; STARTTLS é obrigatório. Sem SMTP, os avisos in-app continuam disponíveis e os emails ficam pendentes até configuração.
 
 A garantia é de **pelo menos uma entrega ao relay**; o cliente final pode não receber (rejeição, spam ou bounce) e há risco de duplicidade após uma falha entre confirmação SMTP e commit. A verificação de propriedade dos endereços de email não foi implementada nesta entrega de demonstração.
 
