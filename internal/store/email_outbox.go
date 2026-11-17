@@ -103,4 +103,3 @@ func retryEmailDelay(attempt int) time.Duration {
 	}
 	return time.Duration(5*(1<<(attempt-1))) * time.Second
 }
-

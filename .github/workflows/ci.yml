@@ -23,12 +23,6 @@ jobs:
         run: go mod download
       - name: gofmt
         run: |
-          for file in $(gofmt -l cmd internal); do
-            echo "__FILE_BEGIN__:$file"
-            gofmt "$file"
-            echo "__FILE_END__:$file"
-          done
-          gofmt -w cmd internal
           test -z "$(gofmt -l cmd internal)"
       - name: Check browser JavaScript syntax
         run: node --check internal/httpapi/ui/app.js
