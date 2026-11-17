@@ -28,5 +28,5 @@ Para provar recuperação de maneira determinística, prefira mostrar a execuç�
 
 - Repositório público ou acessível ao avaliador; README com todos os comandos.
 - Runs aprovados de **Go build/testes**, **Docker** e **dois E2E**.
-- Pipeline de imagem publicado em GHCR: verificar primeiro run após merge do PR final; não afirmar sucesso antes dele.
+- Job `Publish verified API and worker images` no CI do `main`: verificar sucesso e imagens no GHCR após merge do PR de correção; não afirmar publicação concluída antes de conferir.
 - Gravar vídeo de **até 10 minutos** e disponibilizar o link conforme o ambiente de submissão da FIAP.

@@ -102,8 +102,8 @@ O GitHub Actions executa testes unitários, análise estática, build Go, verifi
 
 ## CI/CD e deployment
 
-- **CI:** `.github/workflows/ci.yml` — obrigatório antes da publicação.
-- **CD:** `.github/workflows/cd.yml` — após um CI verde de um `push` em `main`, publica imagens API e worker no GitHub Container Registry, com tags `latest` e SHA de commit. A publicação depende das permissões GHCR da organização; valide o primeiro run após o merge.
+- **CI/CD:** `.github/workflows/ci.yml` — testes e verificações obrigatórios; o job `publish` depende de **todos os quatro jobs de validação** e roda somente em `push` para `main`, com `packages: write` concedido apenas a ele.
+- **Publicação GHCR:** as imagens API e worker recebem tags `latest` e SHA do commit. Não há `workflow_run` privilegiado nem execução de código obtido de um workflow anterior. Confira a publicação no primeiro CI do `main` após o merge.
 - **Deployment local a partir do código:** `bash scripts/deploy-local.sh`.
 - **Deployment com imagens publicadas:** `FIAPX_TAG=<SHA> bash scripts/deploy-release.sh` (autentique-se com `docker login ghcr.io` caso as imagens não estejam públicas).
 

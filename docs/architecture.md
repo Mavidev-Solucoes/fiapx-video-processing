@@ -55,6 +55,6 @@ flowchart TD
 - `scripts/smoke-intake.sh`: aceita upload mesmo após parar RabbitMQ e demonstra reenfileiramento.
 - `scripts/smoke-processing.sh`: processa dois vídeos reais com workers paralelos, confere ZIP, acesso por usuário, duplicidade e falha terminal, consulta notificação privada, confirma leitura e recupera uma lease simulada como expirada.
 - `.github/workflows/ci.yml`: executa testes e os dois E2E em contêineres.
-- `.github/workflows/cd.yml`: publica imagens em GHCR após CI verde no `main`.
+- `.github/workflows/ci.yml`: o job `publish` publica imagens no GHCR somente após todos os jobs de validação concluírem com sucesso, em um `push` para `main`; o token com escrita em pacotes é limitado a esse job.
 
 Veja [matriz de requisitos](requirements.md) e [roteiro de demonstração](demo.md).
