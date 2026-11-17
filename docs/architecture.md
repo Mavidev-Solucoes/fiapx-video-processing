@@ -1,79 +1,60 @@
-# FIAP X — Proposta arquitetural (Fase 5)
+# FIAP X — Arquitetura e justificativas
 
-## Contexto e decisão
+## Contexto
 
-O código-base fornecido pela FIAP tem uma API Go/Gin com um único `main.go` que recebe o vídeo, executa FFmpeg na mesma requisição HTTP e grava o ZIP no disco local. Essa abordagem não oferece isolamento por usuário, fila de trabalho nem recuperação de solicitações. A Fase 5 pede processamento simultâneo, persistência, autenticação, status por usuário, notificação em falhas e escalabilidade.
+O código-base da FIAP era um único servidor Go/Gin, realizando upload e FFmpeg na mesma requisição e gravando ZIP no disco local. O projeto final preserva a extração de imagens a 1 FPS, mas separa a **aceitação das solicitações** do processamento que consome CPU. A abordagem evita manter conexões HTTP abertas durante o processamento e permite aumentar a quantidade de workers.
 
-**Decisão:** dois processos implantáveis, **API** e **worker**, em um só repositório Go. Escolhemos Docker Compose para a entrega, permitido explicitamente pelo edital. Não há necessidade de Saga, banco NoSQL ou Kubernetes obrigatório.
+## Componentes
 
-```text
-Usuário autenticado
-       |
-       v
-API HTTP --- PostgreSQL (usuários, jobs e status)
-       |  \
-       |   +------ MinIO (vídeos e ZIPs)
-       v
-RabbitMQ (fila durável de jobs)
-       |
-       v
-Worker(s) Go / FFmpeg -----> MinIO (ZIP final)
-       |
-       +--------------------> PostgreSQL (status)
-       |
-       +-- falha persistida --> notificação ao usuário (a implementar)
+```mermaid
+flowchart TD
+    U["Usuário / interface web"] --> API["API Go: Auth, Upload, Jobs e Notificações"]
+    API --> DB[("PostgreSQL: usuários, jobs, outbox, leases e avisos")]
+    API --> S3[("Armazenamento S3: originais e ZIPs")]
+    DB --> PUB["Dispatcher do Outbox"]
+    PUB --> MQ[["RabbitMQ: fila fiapx.jobs"]]
+    MQ --> W1["Worker 1: FFmpeg / ZIP"]
+    MQ --> W2["Worker 2: FFmpeg / ZIP"]
+    W1 --> DB
+    W2 --> DB
+    W1 --> S3
+    W2 --> S3
 ```
 
-## Responsabilidades
+**API (Go `net/http`):** autenticação por usuário/senha com bcrypt, JWT de 1 hora, upload multipart limitado a 100 MiB, consulta própria, download ZIP autorizado, interface web e notificações. A API não realiza FFmpeg.
 
-- **API:** criar usuários e sessões, autorizar acesso somente aos próprios jobs, receber uploads com limite de tamanho, persistir um job e seu arquivo, enfileirar trabalho, consultar status e servir downloads autorizados. Registro, login, perfil, consultas restritas, upload e publicação recuperável foram implementados; download e consumo de jobs foram implementados.
-- **Worker:** receber um ID de job (não o arquivo inteiro), recuperar o vídeo do MinIO, executar FFmpeg e criar ZIP, enviar o ZIP ao MinIO e atualizar o estado no PostgreSQL. Vários workers poderão consumir em paralelo.
-- **PostgreSQL:** fonte de verdade dos jobs aceitos. A tabela `video_jobs` inclui ID, usuário proprietário, status, chaves de objetos e tentativas.
-- **RabbitMQ:** separa o recebimento de vídeos do processamento intensivo em CPU. A API usa fila durável, mensagens persistentes, publisher confirms e outbox relacional. ACK manual após persistir o estado terminal, reentrega em erros transitórios e até três tentativas; revisão de DLQ no PR #5.
-- **MinIO:** dados binários fora do banco relacional e do filesystem efêmero das aplicações.
+**Worker (Go + FFmpeg):** consome RabbitMQ, obtém vídeo privado, extrai PNGs (`fps=1`), cria ZIP, grava o resultado, atualiza estado e tenta novamente quando a infraestrutura falha. Workers são executáveis separados e podem ser escalados com Docker Compose.
 
-## Estados do job
+**PostgreSQL:** transações locais e integridade dos usuários, trabalhos, outbox e notificações. A mesma transação que marca uma falha terminal persiste o aviso do usuário. O estado não depende de memória do processo.
 
-`queued` → `processing` → `completed` ou `failed`. A API deve listar apenas os jobs do usuário autenticado, inclusive os que falharam. Em caso de falha, haverá um canal de aviso (a definir e implementar) além do status persistido.
+**RabbitMQ:** isolamento entre upload e execução e tolerância a picos. Fila durável, mensagens persistentes, confirmação de publicação e ACK somente após gravar o resultado no banco. `prefetch=1` limita a um job por consumidor.
 
-## Recuperação de picos — requisito essencial
+**Armazenamento S3 compatível:** vídeo e ZIP fora do banco, separados por chaves de usuário e job. No Compose, o serviço Silo fornece API compatível com a biblioteca MinIO Go. Os objetos não são publicados por rotas estáticas; a API valida propriedade antes de abrir o ZIP.
 
-**Não considerar o requisito atendido nesta fundação.** Precisamos garantir que um trabalho aceito não se perca na falha entre registrar o job no PostgreSQL e publicá-lo no RabbitMQ. Para isso, a implementação deverá adotar um mecanismo de recuperação dos jobs `queued` que ainda não foram entregues (por exemplo, outbox transacional ou reconciliador) e consumidores idempotentes que suportem mensagens repetidas. O número de workers controla a concorrência. **No PR #3, a API recebe e armazena vídeos, grava job + outbox atomicamente e publica de forma recuperável no RabbitMQ. O worker consome e atualiza a situação de cada job.**
+## Fluxo de dados e consistência
 
-## Origem do processamento
+1. Usuário autenticado envia vídeo; a API armazena o arquivo e grava `video_jobs` + `video_job_outbox` na mesma transação. Retorna 202 somente depois do commit.
+2. Um dispatcher lê a outbox com `FOR UPDATE SKIP LOCKED`, publica uma mensagem com apenas o ID do job e registra publicação após confirmação do RabbitMQ.
+3. O worker obtém uma `lease_token` exclusiva no PostgreSQL, alterando o job para `processing`. Mensagens duplicadas não conseguem processar o mesmo job simultaneamente. A lease é renovada por heartbeat.
+4. FFmpeg extrai quadros e o worker salva o ZIP no S3. Só então grava `completed` no banco e confirma a mensagem. Download exige JWT e `user_id` correto na consulta SQL.
+5. Falha na decodificação é terminal. Indisponibilidade transitória tenta novamente até o limite de três tentativas. Na falha definitiva, o estado `failed` e uma notificação `processing_failed` são gravados atomicamente; o índice único impede avisos repetidos.
+6. Ao reiniciar um worker que caiu, a mensagem não confirmada é reentregue. Depois da expiração da lease, outro worker pode reivindicar a execução. O token de fencing impede que a execução antiga finalize um job cujo controle perdeu.
 
-O protótipo FIAP usa `ffmpeg -vf fps=1` e entrega PNGs em ZIP. A implementação inicial de `internal/processing` mantém esse contrato, substituindo nomes baseados em timestamp por diretórios temporários exclusivos. Ainda não está conectada à API nem aos workers.
+## Escolhas e trade-offs
 
-## Decisões de escopo
+**Dois executáveis em um repositório**, em vez de múltiplos microsserviços de negócio: respeita responsabilidades e escalabilidade sem adicionar infraestrutura desnecessária. O desafio não exige Saga nem múltiplos bancos.
 
-- Um repositório com dois executáveis para reduzir custo de coordenação.
-- Sem introduzir cache Redis sem necessidade observada.
-- Não expor arquivos por rotas estáticas públicas; downloads exigirão propriedade de job.
-- Docker Compose cobre entrega e demonstração, com teste de escalabilidade por múltiplos workers.
-- Senhas de desenvolvimento do Compose não devem ser reutilizadas em ambientes públicos.
+**Docker Compose em vez de Kubernetes:** permitido para a entrega, suficiente para demonstrar duas réplicas de worker, picos e recuperação. Adotar Kubernetes acrescentaria complexidade operacional sem necessidade explícita.
 
-Veja [requisitos e critérios de aceite](requirements.md).
+**Notificações dentro da aplicação:** alternativa simples e verificável ao envio de e-mail. A API fornece `GET /api/notifications` e confirmação de leitura por usuário; o navegador consulta periodicamente e apresenta um alerta quando um processamento falha.
 
-## Autenticação e autorização (PR #2)
+**Limites conhecidos:** volumes Docker locais não substituem backup/alta disponibilidade; um upload persistido cujo commit no PostgreSQL falha pode deixar objeto órfão; a estratégia de retry é simples, sem DLQ separada; não há e-mail externo nem deploy remoto automático. Essas decisões reduzem escopo sem esconder as limitações.
 
-A API usa `bcrypt` para armazenar senhas e tokens JWT HS256 com expiração de uma hora. O segredo é informado via `AUTH_JWT_SECRET` (mínimo 32 bytes). As consultas `GET /api/jobs` e `GET /api/jobs/{id}` filtram `user_id` no próprio SQL, impedindo acesso cruzado mesmo quando o ID de um job é conhecido. Registro e login são públicos; consulta de perfil e de jobs exige Bearer token.
+## Evidências automatizadas
 
-Esta entrega não demonstra ainda upload, concorrência ou recuperação de pedidos; estes itens permanecem explicitamente pendentes.
+- `scripts/smoke-intake.sh`: aceita upload mesmo após parar RabbitMQ e demonstra reenfileiramento.
+- `scripts/smoke-processing.sh`: processa dois vídeos reais com workers paralelos, confere ZIP, acesso por usuário, duplicidade e falha terminal, consulta notificação privada, confirma leitura e recupera uma lease simulada como expirada.
+- `.github/workflows/ci.yml`: executa testes e os dois E2E em contêineres.
+- `.github/workflows/cd.yml`: publica imagens em GHCR após CI verde no `main`.
 
-## Fluxo de aceitação durável (PR #3)
-
-1. O usuário envia `POST /api/jobs`, autenticado com Bearer, com multipart `video` de até 100 MiB.
-2. A API armazena o vídeo em um objeto privado do bucket MinIO, isolado por usuário e job.
-3. Em **uma única transação PostgreSQL**, grava `video_jobs(status=queued)` e `video_job_outbox(published_at=NULL)`.
-4. Um dispatcher periódico seleciona linhas pendentes com `FOR UPDATE SKIP LOCKED`, publica na fila durável `fiapx.jobs` com confirmação do broker e registra `published_at`.
-5. Em falha temporária de broker ou após reinício da API, o outbox não publicado é reenviado. Eventuais entregas repetidas devem ser tratadas com idempotência pelo consumidor (PR #4).
-
-O job é aceito (HTTP 202) **somente depois** do commit PostgreSQL. Um erro de SQL após gravar o objeto pode deixar um arquivo órfão no MinIO, que deverá ser removido por uma rotina de manutenção futura; não implica perda de job aceito.
-
-## Execução distribuída (PR #4)
-
-O consumidor utiliza `prefetch=1` e `manual ACK`. O comando transporta somente o ID do job. O banco concede `lease_token` para apenas um worker, renovado por heartbeat a cada 20s; após interrupção e expiração, outra entrega pode recuperar o processamento. A finalização confere o token para impedir que um worker antigo altere estados depois de perder a lease.
-
-FFmpeg extrai quadros a 1 FPS e o worker grava o ZIP no MinIO antes de marcar `completed`. Vídeos inválidos são marcados `failed`; falhas transitórias são reenfileiradas até três tentativas. O download exige JWT e consulta filtrada por `user_id` no PostgreSQL antes de ler qualquer objeto.
-
-O `schema-migrate` aplica `003_worker_leases.sql` também a volumes de PostgreSQL já existentes.
+Veja [matriz de requisitos](requirements.md) e [roteiro de demonstração](demo.md).

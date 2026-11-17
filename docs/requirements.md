@@ -1,32 +1,32 @@
-# FIAP X — Matriz de requisitos e critérios de aceite
+# FIAP X — Matriz de aderência ao Hackathon Fase 5
 
-Fonte: `POSTECH - SOAT - Fase 5 - Hacka.pdf`, páginas 3 e 4.
+Base: enunciado `POSTECH - SOAT - Fase 5 - Hacka.pdf`, páginas 3–4. Esta matriz resume os critérios técnicos implementados; o vídeo e sua disponibilização são atividades de entrega.
 
-**Legenda:** *Planejado* = ainda não existe; *Fundação* = estrutura/configuração presente, integração pendente; *Parcial* = implementação sem fluxo de ponta a ponta.
-
-| Requisito FIAP | Critério de aceite proposto | Estado após PR #4 |
+| Requisito | Implementação / critério verificável | Evidência |
 | --- | --- | --- |
-| Processar mais de um vídeo simultaneamente | Duas solicitações aceitas e concluídas com workers paralelos | Implementado; smoke-processing.sh verifica duas réplicas |
-| Não perder requisição em picos | Job aceito permanece em banco e volta à fila após falha/restart | Implementado: outbox, lease, ACK manual e recuperação; falta demonstração com kill de worker |
-| Usuário e senha | Login com senha armazenada por hash; token nas rotas privadas | Implementado: bcrypt + token HS256 (CI pendente de validação) |
-| Status de vídeos por usuário | Listagem restrita ao dono, com estados e erros | Implementado: queued/processing/completed/failed e consultas privadas |
-| Usuário pode ser notificado em erro | Notificação visível ou outro canal demonstrável quando job falha | Planejado |
-| Persistência | Banco e armazenamento persistentes, com migração reproduzível | Implementados PostgreSQL, MinIO e migração de outbox em Compose; fluxo final pendente |
-| Arquitetura escalável | API desacoplada do worker; escalar réplicas dos workers | Implementado: workers escaláveis, prefetch 1 |
-| GitHub | Código versionado em repositório | Fundação |
-| Testes | Testes unitários e de integração executados no CI | Implementado: testes unitários e E2E com FFmpeg, ZIP, duplicidade e isolamento |
-| CI/CD | Workflow de testes, build, imagens e entrega reproduzível | Fundação (CI; CD pendente) |
-| Documentação arquitetural | Diagrama, decisões, fluxos, erros e como reproduzir | Fundação |
-| Scripts de recursos | DDL de banco e Compose | Fundação |
-| Vídeo de até 10 minutos | Mostrar docs, arquitetura e aplicação funcionando | Planejado |
+| Processamento simultâneo de vídeos | Dois ou mais containers worker consumindo em paralelo com `prefetch=1` | `smoke-processing.sh`, CI E2E |
+| Não perder solicitação aceita durante indisponibilidade | Upload e outbox transacional persistidos; publicação com confirmação; lease e ACK manual no consumo | `smoke-intake.sh`, recuperação de lease no `smoke-processing.sh` |
+| Autenticação com usuário e senha | Bcrypt e JWT; endpoints privados | Testes `internal/auth`, `internal/httpapi` |
+| Status por usuário | `queued`, `processing`, `completed`, `failed` filtrados por proprietário | API `/api/jobs`; E2E com usuários A/B |
+| Notificação em caso de erro | Aviso in-app criado atomicamente em falha terminal, restrito ao dono e marcável como lido | `/api/notifications`, `smoke-processing.sh` |
+| Banco de dados e persistência | PostgreSQL com migrations, volumes; armazenamento privado S3 | `migrations/`, `docker-compose.yml` |
+| Arquitetura escalável | API/worker separados, escaláveis por `--scale worker=N` | `cmd/api`, `cmd/worker`, scripts |
+| Versionamento GitHub | Repositório com commits e PRs isolados | Histórico do GitHub |
+| Testes e automação | Go race tests, build, vet, Docker Compose, dois testes E2E | `.github/workflows/ci.yml` |
+| CI/CD | Validação em PR e imagens GHCR após CI verde no main; deploy Compose reproduzível | `.github/workflows/cd.yml`, `scripts/deploy-release.sh` |
+| Documentação de arquitetura | Diagrama, decisões, fluxos e limitações | `docs/architecture.md` |
+| Scripts de criação de recursos | Compose, migrations e scripts de deployment | `docker-compose.yml`, `migrations/`, `scripts/` |
+| Vídeo de até 10 minutos | Demonstrar login, upload, processamento, ZIP, falha, aviso e evidência CI | Pendente: gravação e link da apresentação |
 
-## Cenários de demonstração recomendados
+**Escopo da garantia de durabilidade:** as requisições já confirmadas são recuperáveis em falhas transitórias de serviço/broker se os volumes persistentes estiverem intactos. Isso não equivale a disaster recovery diante da destruição do armazenamento.
 
-1. Registrar usuário A, autenticar, enviar vídeo, acompanhar `queued` → `processing` → `completed` e baixar ZIP.
-2. Executar dois vídeos com workers paralelos; demonstrar que ambos finalizam.
-3. Simular pico/falha do worker e demonstrar recuperação sem perder job aceito.
-4. Mostrar que usuário B não vê nem baixa trabalhos de A.
-5. Enviar vídeo inválido e demonstrar falha persistida e notificação.
-6. Mostrar CI e comandos para reproduzir localmente.
+## Cenários mínimos antes da gravação
 
-Não declarar requisitos como concluídos até seus critérios serem comprovados.
+1. Criar conta A, enviar vídeo e demonstrar estados até `completed`, com ZIP contendo PNGs.
+2. Escalar dois workers; enviar mais de um vídeo e observar processamento.
+3. Simular indisponibilidade de RabbitMQ ou lease expirada e demonstrar recuperação.
+4. Autenticar como usuário B para comprovar isolamento do ZIP e das notificações.
+5. Enviar um `.mp4` inválido; mostrar `failed`, notificação e confirmação de leitura.
+6. Mostrar pipeline CI aprovado, publicação de imagens após merge e scripts de deployment local.
+
+Não afirmar que o vídeo foi entregue nem que a primeira publicação GHCR está validada antes de obter os respectivos links e runs.

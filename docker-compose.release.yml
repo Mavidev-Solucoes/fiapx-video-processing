@@ -1,0 +1,6 @@
+# Overlay for running published GHCR images (credentials/volumes come from base Compose).
+services:
+  api:
+    image: ${FIAPX_IMAGE_BASE:-ghcr.io/mavidev-solucoes/fiapx-video-processing}-api:${FIAPX_TAG:-latest}
+  worker:
+    image: ${FIAPX_IMAGE_BASE:-ghcr.io/mavidev-solucoes/fiapx-video-processing}-worker:${FIAPX_TAG:-latest}

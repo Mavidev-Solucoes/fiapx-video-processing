@@ -24,6 +24,8 @@ jobs:
       - name: gofmt
         run: |
           test -z "$(gofmt -l cmd internal)"
+      - name: Check browser JavaScript syntax
+        run: node --check internal/httpapi/ui/app.js
       - name: Build
         run: go build ./cmd/api ./cmd/worker
       - name: Vet
@@ -36,8 +38,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate Compose
-        run: docker compose config --quiet
+      - name: Validate Compose configurations
+        run: |
+          docker compose config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.release.yml config --quiet
       - name: Build API image
         run: docker build -f deploy/Dockerfile.api -t fiapx-api:ci .
       - name: Build worker image

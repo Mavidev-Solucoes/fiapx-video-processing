@@ -1,133 +1,119 @@
-# FIAP X — Processamento de Vídeos (Hackathon Fase 5)
+# FIAP X — Hackathon de processamento de vídeos
 
-Projeto do Hackathon FIAP X. O objetivo é receber vídeos de usuários autenticados, processá-los em paralelo, gerar um ZIP com imagens extraídas, permitir download e acompanhar os estados dos trabalhos, sem perder solicitações aceitas em picos de demanda.
+Aplicação para receber vídeos de usuários autenticados, processá-los de forma assíncrona e paralela com FFmpeg e disponibilizar um ZIP de frames. Baseada no protótipo Go entregue pela FIAP, mas com recepção, processamento e persistência desacoplados.
 
-> **Estado: fluxo funcional de vídeo (PR #4).** A API autentica e recebe vídeos, o outbox publica jobs duráveis, e workers independentes consomem RabbitMQ, extraem frames via FFmpeg, geram ZIP, atualizam o estado e permitem download privado. Notificações de falha e documentação final de entrega continuam no PR #5.
+## Visão geral
 
-## Componentes previstos
-
-- **API (Go):** autenticação, criação de jobs, consultas por usuário e downloads autorizados.
-- **Worker (Go + FFmpeg):** consumidor RabbitMQ que processará jobs independentemente da API.
-- **PostgreSQL:** usuários, metadados dos vídeos e estados dos jobs.
-- **RabbitMQ:** fila durável para absorver picos e distribuir trabalho.
-- **MinIO:** armazenamento de arquivos de entrada e resultados (compatível com S3).
-- **Docker Compose:** execução local; não requer Kubernetes para atender ao escopo do Hackathon.
-
-API e worker são aplicações distintas no mesmo repositório. O código fornecido pela FIAP era um protótipo Go/Gin com processamento síncrono em `main.go`, FFmpeg com `fps=1` e ZIP local. Preservamos o **comportamento de extração de um quadro por segundo** no módulo `internal/processing`; as rotas públicas do protótipo não foram copiadas por não atenderem à autenticação e ao isolamento por usuário.
-
-## Estrutura
+- **API Go (net/http):** registro/login, autorização JWT, upload (100 MiB), listagem/status, download ZIP e notificações.
+- **Workers Go + FFmpeg:** executam os jobs consumindo RabbitMQ; escalam por réplicas do Compose.
+- **PostgreSQL:** usuários, jobs, estado, tentativas, outbox transacional, leases e notificações.
+- **RabbitMQ:** fila durável `fiapx.jobs` com mensagens persistentes, publisher confirms e ACK manual.
+- **Armazenamento S3 compatível (MinIO/Silo no Compose):** vídeos originais e ZIPs privados.
+- **Docker Compose:** infraestrutura e execução local reproduzíveis, sem Kubernetes obrigatório.
 
 ```text
-cmd/api/                 servidor HTTP (autenticação e consultas de jobs)
-cmd/worker/              processo independente (consumer RabbitMQ + FFmpeg)
-internal/auth/           bcrypt + tokens HMAC-SHA256 e testes
-internal/httpapi/        rotas REST, autorização e testes de handlers
-internal/store/          persistência PostgreSQL (usuários + jobs)
-internal/identity/       criação/validação de IDs UUID
-internal/processing/     extração FFmpeg + criação de ZIP e testes
-migrations/              DDL inicial de usuários e jobs
-deploy/                  Dockerfiles separados
-docs/                    arquitetura e rastreabilidade dos requisitos
-.github/workflows/       pipeline de CI
-docker-compose.yml       postgres, rabbitmq, minio, api e worker
+Navegador / cliente REST
+        |
+        v
+Go API --------- PostgreSQL (jobs, outbox, notificações)
+  |  |                   ^
+  |  +--> S3 (vídeos)    |
+  v                      |
+RabbitMQ (fila durável)  |
+  |                      |
+  +--> Worker Go/FFmpeg --+--> S3 (ZIP)
+  +--> Worker Go/FFmpeg
 ```
 
-## Executar a fundação localmente
+## Começar rapidamente
 
-Pré-requisitos: Docker com Compose v2. Para os testes sem Docker, Go 1.23+.
+Pré-requisito: Docker com Compose v2.
 
 ```bash
-docker compose up --build -d
-curl http://localhost:8080/health/live
-docker compose ps
-docker compose down
+git clone https://github.com/Mavidev-Solucoes/fiapx-video-processing.git
+cd fiapx-video-processing
+bash scripts/deploy-local.sh
 ```
 
-- API: http://localhost:8080/health/live
-- RabbitMQ Management: http://localhost:15672 (credenciais de desenvolvimento no Compose)
-- MinIO Console: http://localhost:9001 (credenciais de desenvolvimento no Compose)
-- PostgreSQL: porta 5432, banco `fiapx` (schema inicial criado ao iniciar volume vazio)
+Abra **http://localhost:8080/** e crie uma conta. A interface permite enviar um vídeo, acompanhar `queued → processing → completed/failed`, baixar o ZIP e visualizar notificações de falha. Os avisos são atualizados automaticamente a cada 4 segundos e podem ser marcados como lidos. A sessão do navegador fica apenas na memória; atualizar a página exige novo login.
 
-**Atenção:** credenciais e portas do Compose são apenas para desenvolvimento local, nunca produção. A migração em `migrations/` roda na primeira inicialização de um volume PostgreSQL vazio; para aplicar alterações posteriores, será necessário um mecanismo de migrações.
+Por padrão, o script executa **dois workers**. Para mudar: `WORKERS=3 bash scripts/deploy-local.sh`. Para desligar sem apagar os dados: `docker compose down`.
 
-## Autenticação e consulta de jobs
+Observação: o ZIP contém **uma imagem PNG por segundo** (`ffmpeg -vf fps=1`), preservando o comportamento do protótipo FIAP; não contém todos os frames originais.
 
-A API utiliza **hash bcrypt** para as senhas (12–72 bytes) e **Bearer JWT HS256**, válido por uma hora. A chave `AUTH_JWT_SECRET` é obrigatória na aplicação (mínimo 32 bytes); o valor padrão no Docker Compose é **somente para desenvolvimento local** e deve ser substituído fora desse ambiente.
+### Serviços auxiliares
 
-| Método e rota | Autenticado? | Resultado |
-| --- | --- | --- |
-| `POST /api/auth/register` | Não | Cria conta e devolve token |
-| `POST /api/auth/login` | Não | Autentica e devolve token |
-| `GET /api/me` | Sim | Perfil do usuário |
-| `GET /api/jobs` | Sim | Lista até 100 jobs pertencentes ao usuário |
-| `POST /api/jobs` | Sim | Upload multipart (`video`) e aceitação assíncrona (HTTP 202) |
-| `GET /api/jobs/{id}` | Sim | Detalhe do job pertencente ao usuário; 404 para jobs de terceiros |
-| `GET /api/jobs/{id}/download` | Sim | ZIP privado quando completed; 409 enquanto pendente |
-| `GET /health/live` | Não | Liveness da API |
+| Serviço | Endereço local |
+| --- | --- |
+| UI/API | http://localhost:8080/ |
+| RabbitMQ Management | http://localhost:15672/ |
+| Console de objetos | http://localhost:9001/ |
+| PostgreSQL | localhost:5432 |
 
-Exemplo de teste manual após `docker compose up --build -d`:
+**Segurança:** o Compose contém credenciais de desenvolvimento e expõe portas somente em `127.0.0.1`. Configure `AUTH_JWT_SECRET`, `POSTGRES_PASSWORD`, `RABBITMQ_PASSWORD`, `MINIO_USER` e `MINIO_PASSWORD` antes de qualquer implantação fora de um ambiente local controlado. Não exponha o Compose diretamente à internet sem TLS e revisão de segurança.
 
-```bash
-curl -X POST http://localhost:8080/api/auth/register \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"estudante@example.com","password":"uma-senha-bem-forte-2026"}'
-```
+## Endpoints REST
 
-O resultado inclui `accessToken`. Envie o valor no cabeçalho `Authorization: Bearer <accessToken>` para acessar `/api/me` e `/api/jobs`. A lista retorna os vídeos já enviados pelo usuário, inicialmente com estado `queued` até a implementação do worker.
+| Método | Endpoint | Autorização | Finalidade |
+| --- | --- | --- | --- |
+| POST | `/api/auth/register` | Pública | Criar usuário, receber token |
+| POST | `/api/auth/login` | Pública | Autenticar, receber token |
+| GET | `/api/me` | Bearer | Consultar usuário |
+| POST | `/api/jobs` | Bearer | Upload `multipart/form-data` (`video`); retorna HTTP 202 |
+| GET | `/api/jobs` | Bearer | Listar os últimos 100 jobs próprios |
+| GET | `/api/jobs/{id}` | Bearer | Consultar status do job próprio |
+| GET | `/api/jobs/{id}/download` | Bearer | Baixar ZIP concluído; 409 se pendente |
+| GET | `/api/notifications` | Bearer | Listar notificações próprias |
+| POST | `/api/notifications/{id}/read` | Bearer | Marcar aviso como lido; retorna 204 |
+| GET | `/health/live` | Pública | Health check da API |
 
-**Situação atual:** processamento por worker, ZIP e download privado implementados. A notificação de erros e as evidências finais ficam para o PR #5.
+Upload com extensões `.mp4`, `.mov`, `.mkv`, `.webm` e `.avi`; limite de **100 MiB**. O conteúdo é efetivamente validado pelo FFmpeg durante o processamento; extensões válidas não garantem vídeo decodificável.
 
-## Testes e CI
-
-```bash
-go test ./...
-go test -race ./...
-go vet ./...
-go build ./cmd/api ./cmd/worker
-docker compose config --quiet
-```
-
-O workflow de GitHub Actions executa build, vet, testes/race e valida os Dockerfiles e o Compose. Isso valida a **fundação**, não o atendimento funcional completo da Fase 5.
-
-## Próximas entregas (PRs separados)
-
-1. **Concluído neste PR:** registro/login, token assinado, autorização e leitura de jobs por usuário.
-2. **Concluído neste PR:** upload com tamanho limitado, persistência no MinIO e publicação recuperável pelo outbox PostgreSQL/RabbitMQ.
-3. **Concluído neste PR:** worker funcional, retries limitados, status persistidos, ZIP e downloads autorizados. **Notificações pendentes**.
-4. Testes de concorrência/picos, integração, documentação final e demonstração de até 10 minutos.
-
-Confira [decisões de arquitetura](docs/architecture.md) e [matriz de requisitos](docs/requirements.md).
-
-## Upload de vídeo e despacho assíncrono (PR #3)
-
-Envie um vídeo em `POST /api/jobs` com autenticação Bearer, usando `multipart/form-data` e o campo de arquivo **`video`**. Extensões permitidas: `.mp4`, `.mov`, `.mkv`, `.webm` e `.avi`. Limite de **100 MiB** por upload. O retorno `202 Accepted` inclui o job com estado `queued` e o cabeçalho `Location: /api/jobs/{id}`.
-
-A API envia o arquivo ao MinIO (objeto privado por usuário/job). **Só considera o job aceito após inserir a linha de `video_jobs` e a entrada de `video_job_outbox` na mesma transação PostgreSQL.** O dispatcher lê as entradas pendentes com `FOR UPDATE SKIP LOCKED` e as publica na fila durável `fiapx.jobs`, usando mensagens persistentes e publisher confirms. Se RabbitMQ estiver indisponível, a entrada permanece pendente no banco e é tentada novamente. Uma queda após o publish e antes do commit pode gerar duplicidade; o worker deverá processar mensagens de forma idempotente no PR #4.
-
-Para volumes PostgreSQL já criados nos PRs anteriores, o serviço `schema-migrate` aplica `migrations/002_job_outbox.sql` automaticamente ao subir o Compose. Em volumes novos, o arquivo também é aplicado pelo PostgreSQL na inicialização. O serviço `minio-init` configura o bucket antes de a API aceitar uploads.
-
-Exemplo (substitua `TOKEN` por um token real):
+Exemplo usando token da resposta de cadastro/login:
 
 ```bash
 curl -i -X POST http://localhost:8080/api/jobs \
-  -H 'Authorization: Bearer TOKEN' \
-  -F 'video=@./exemplo.mp4'
+  -H "Authorization: Bearer TOKEN" \
+  -F "video=@./exemplo.mp4"
 ```
 
-**Escopo atual:** o worker consome jobs, gera ZIP e registra completed/failed, com retries e idempotência. Não use `docker compose down -v` se quiser preservar dados locais. Não use `docker compose down -v` se quiser manter os dados locais.
+Um segundo usuário não consegue consultar ou baixar jobs e notificações de outra conta (404 ou lista vazia).
 
-## Worker, ZIP e download (PR #4)
+## Por que as solicitações aceitas são recuperáveis?
 
-O worker utiliza RabbitMQ com ACK manual e prefetch 1, permitindo paralelismo com o comando `docker compose up -d --build --scale worker=2`. Cada job é adquirido por atualização condicional no PostgreSQL: `queued → processing → completed/failed`. Uma `lease_token` (UUID) com prazo de validade impede execução simultânea de mensagens duplicadas. Durante a execução, o worker renova a lease a cada 20 segundos. Após um crash, a lease expira e permite retomar o job com outra entrega do RabbitMQ.
+1. O vídeo é salvo no armazenamento de objetos, depois o job e sua entrada de outbox são gravados **na mesma transação PostgreSQL**.
+2. O HTTP **202** só é devolvido após o commit. Se RabbitMQ estiver indisponível, a entrada de outbox permanece pendente para publicação posterior.
+3. O dispatcher usa `FOR UPDATE SKIP LOCKED`, fila durável, mensagens persistentes e confirmação do broker.
+4. Os workers usam `ACK manual`, `prefetch=1`, lease exclusiva com heartbeat e token de fencing. Falhas transitórias são reenfileiradas (até três tentativas); entregas repetidas não reiniciam jobs concluídos.
+5. Ao falhar definitivamente, o worker grava `failed` **e a notificação do dono** na mesma transação. A chave única impede avisos duplicados.
 
-O vídeo é baixado do MinIO, processado por FFmpeg com `fps=1` (projeto-base), compactado como `frames.zip` e enviado ao MinIO. O PostgreSQL recebe a chave final somente após o arquivo ter sido persistido. Mensagens são confirmadas ao RabbitMQ somente depois do estado terminal. Falhas transitórias são reenfileiradas com até três tentativas; vídeos incompatíveis passam diretamente a `failed`.
+**Limites:** a demonstração usa volumes locais persistentes do Docker. Remover os volumes (por exemplo, `docker compose down -v`), perder permanentemente o armazenamento ou hospedar volumes em disco sem redundância não oferece recuperação de desastre. Notificações são **in-app**, não por e-mail. Arquivos órfãos de uploads não confirmados ainda podem exigir limpeza operacional.
 
-O endpoint `GET /api/jobs/{id}/download` responde com `application/zip` apenas quando o token pertence ao usuário dono do job e o estado é `completed`. Jobs pendentes recebem HTTP 409; acesso a trabalhos de terceiros recebe 404.
+## Testes e evidências
 
-### Como comprovar
+```bash
+go test -race ./...
+go vet ./...
+bash scripts/smoke-intake.sh
+bash scripts/smoke-processing.sh
+```
 
-- `go test -race ./...`: testes de auth, upload, FFmpeg/ZIP, workflow e proteção do download.
-- `bash scripts/smoke-intake.sh`: aceitação durante interrupção de RabbitMQ e recuperação do outbox.
-- `bash scripts/smoke-processing.sh`: duas réplicas de worker, upload de vídeos reais gerados pelo FFmpeg, ZIP com PNGs, isolamento entre usuários, supressão de duplicidades e erro de mídia inválida.
+O GitHub Actions executa testes unitários, análise estática, build Go, verificação do JavaScript, builds das imagens e testes end-to-end com Docker Compose. Os cenários verificam aceitação com RabbitMQ fora do ar, dois workers processando vídeos reais, PNGs no ZIP, isolamento entre usuários, idempotência, vídeo inválido, notificação privada e recuperação de lease expirada. Os scripts E2E **apagam os volumes de teste** ao terminar; não os execute sobre dados importantes.
 
-**Ainda pendente:** notificação de falhas ao usuário, revisão de resiliência e apresentação final (PR #5).
+## CI/CD e deployment
+
+- **CI:** `.github/workflows/ci.yml` — obrigatório antes da publicação.
+- **CD:** `.github/workflows/cd.yml` — após um CI verde de um `push` em `main`, publica imagens API e worker no GitHub Container Registry, com tags `latest` e SHA de commit. A publicação depende das permissões GHCR da organização; valide o primeiro run após o merge.
+- **Deployment local a partir do código:** `bash scripts/deploy-local.sh`.
+- **Deployment com imagens publicadas:** `FIAPX_TAG=<SHA> bash scripts/deploy-release.sh` (autentique-se com `docker login ghcr.io` caso as imagens não estejam públicas).
+
+O deployment por Compose é explícito/reproduzível; não há deploy automático em um servidor remoto nem configuração AWS exigida para esta entrega. As migrations ficam em `migrations/` e são aplicadas em volumes novos e pelo `schema-migrate` em volumes existentes.
+
+## Documentação da entrega
+
+- [Arquitetura e justificativas](docs/architecture.md)
+- [Matriz de requisitos FIAP](docs/requirements.md)
+- [Roteiro da demonstração de até 10 minutos](docs/demo.md)
+- [Scripts de deployment e criação de recursos](scripts)
+
+Projeto da organização Mavidev Soluções para o Hackathon Fase 5 da Pós-Tech FIAP.
