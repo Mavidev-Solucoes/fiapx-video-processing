@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,12 +13,15 @@ import (
 )
 
 type fakeNotices struct {
-	owner string
+	owner        string
 	notification store.Notification
-	read bool
+	read         bool
 }
+
 func (f *fakeNotices) ListNotifications(_ context.Context, user string) ([]store.Notification, error) {
-	if user != f.owner { return []store.Notification{}, nil }
+	if user != f.owner {
+		return []store.Notification{}, nil
+	}
 	n := f.notification
 	if f.read {
 		t := time.Now()
@@ -26,7 +30,9 @@ func (f *fakeNotices) ListNotifications(_ context.Context, user string) ([]store
 	return []store.Notification{n}, nil
 }
 func (f *fakeNotices) MarkNotificationRead(_ context.Context, user string, id int64) error {
-	if user != f.owner || id != f.notification.ID { return sql.ErrNoRows }
+	if user != f.owner || id != f.notification.ID {
+		return sql.ErrNoRows
+	}
 	f.read = true
 	return nil
 }
@@ -34,7 +40,9 @@ func (f *fakeNotices) MarkNotificationRead(_ context.Context, user string, id in
 func TestNotificationsRequireAuthenticationAndOwnership(t *testing.T) {
 	db := &memoryStore{users: map[string]store.User{}, jobs: map[string][]store.Job{}}
 	tokens, err := auth.NewTokens("a-local-secret-longer-than-thirty-two-bytes-for-tests")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	accessA, _ := tokens.Issue(userA)
 	accessB, _ := tokens.Issue(userB)
 	notifications := &fakeNotices{

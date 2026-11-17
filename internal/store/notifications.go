@@ -19,14 +19,20 @@ func (p *Postgres) ListNotifications(ctx context.Context, userID string) ([]Noti
 	rows, err := p.DB.QueryContext(ctx, `SELECT id, job_id::text, category, message, created_at, read_at
 		FROM user_notifications WHERE user_id=$1::uuid
 		ORDER BY created_at DESC, id DESC LIMIT 100`, userID)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	out := make([]Notification, 0)
 	for rows.Next() {
 		var n Notification
 		var readAt sql.NullTime
-		if err := rows.Scan(&n.ID, &n.JobID, &n.Category, &n.Message, &n.CreatedAt, &readAt); err != nil { return nil, err }
-		if readAt.Valid { n.ReadAt = &readAt.Time }
+		if err := rows.Scan(&n.ID, &n.JobID, &n.Category, &n.Message, &n.CreatedAt, &readAt); err != nil {
+			return nil, err
+		}
+		if readAt.Valid {
+			n.ReadAt = &readAt.Time
+		}
 		out = append(out, n)
 	}
 	return out, rows.Err()

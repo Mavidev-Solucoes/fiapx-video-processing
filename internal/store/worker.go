@@ -91,9 +91,13 @@ func (p *Postgres) CompleteJob(ctx context.Context, jobID, token, objectKey stri
 
 func (p *Postgres) FailOrRetryJob(ctx context.Context, jobID, token, reason string, terminal bool) error {
 	target := "queued"
-	if terminal { target = "failed" }
+	if terminal {
+		target = "failed"
+	}
 	tx, err := p.DB.BeginTx(ctx, nil)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer tx.Rollback()
 
 	var userID string
@@ -103,15 +107,21 @@ func (p *Postgres) FailOrRetryJob(ctx context.Context, jobID, token, reason stri
 		lease_token=NULL, lease_expires_at=NULL
 		WHERE id=$1::uuid AND lease_token=$2::uuid AND status='processing'
 		RETURNING user_id::text`, jobID, token, target, reason).Scan(&userID)
-	if errors.Is(err, sql.ErrNoRows) { return ErrLeaseLost }
-	if err != nil { return err }
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrLeaseLost
+	}
+	if err != nil {
+		return err
+	}
 	if terminal {
 		_, err = tx.ExecContext(ctx, `INSERT INTO user_notifications
 			(user_id, job_id, category, message)
 			VALUES ($1::uuid, $2::uuid, 'processing_failed', $3)
 			ON CONFLICT (job_id, category) DO NOTHING`,
 			userID, jobID, "Não foi possível processar seu vídeo. Consulte o trabalho para detalhes.")
-		if err != nil { return fmt.Errorf("persist failure notification: %w", err) }
+		if err != nil {
+			return fmt.Errorf("persist failure notification: %w", err)
+		}
 	}
 	return tx.Commit()
 }

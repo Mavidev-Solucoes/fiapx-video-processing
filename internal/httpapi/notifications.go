@@ -21,7 +21,10 @@ func (a *API) listNotifications(w http.ResponseWriter, r *http.Request, userID s
 		return
 	}
 	notices, err := a.notifications.ListNotifications(r.Context(), userID)
-	if err != nil { serverError(w, err); return }
+	if err != nil {
+		serverError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"notifications": notices})
 }
 
@@ -40,6 +43,9 @@ func (a *API) markNotificationRead(w http.ResponseWriter, r *http.Request, userI
 		writeError(w, http.StatusNotFound, "notification not found")
 		return
 	}
-	if err != nil { serverError(w, err); return }
+	if err != nil {
+		serverError(w, err)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
