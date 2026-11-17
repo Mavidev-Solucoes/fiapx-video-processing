@@ -26,7 +26,7 @@ Worker(s) Go / FFmpeg -----> MinIO (ZIP final)
 
 ## Responsabilidades
 
-- **API:** criar usuários e sessões, autorizar acesso somente aos próprios jobs, receber uploads com limite de tamanho, persistir um job e seu arquivo, enfileirar trabalho, consultar status e servir downloads autorizados. Os handlers e o consumidor de jobs ainda serão implementados.
+- **API:** criar usuários e sessões, autorizar acesso somente aos próprios jobs, receber uploads com limite de tamanho, persistir um job e seu arquivo, enfileirar trabalho, consultar status e servir downloads autorizados. Registro, login, perfil e leitura restrita de jobs foram implementados; o upload, a publicação de trabalhos, o download e o consumidor de jobs ainda serão implementados.
 - **Worker:** receber um ID de job (não o arquivo inteiro), recuperar o vídeo do MinIO, executar FFmpeg e criar ZIP, enviar o ZIP ao MinIO e atualizar o estado no PostgreSQL. Vários workers poderão consumir em paralelo.
 - **PostgreSQL:** fonte de verdade dos jobs aceitos. A tabela `video_jobs` inclui ID, usuário proprietário, status, chaves de objetos e tentativas.
 - **RabbitMQ:** separa o recebimento de vídeos do processamento intensivo em CPU. Mensagens deverão ser persistentes, com confirmação de publicação e ACK após persistir o resultado; retries e DLQ serão definidos na implementação.
@@ -38,7 +38,7 @@ Worker(s) Go / FFmpeg -----> MinIO (ZIP final)
 
 ## Recuperação de picos — requisito essencial
 
-**Não considerar o requisito atendido nesta fundação.** Precisamos garantir que um trabalho aceito não se perca na falha entre registrar o job no PostgreSQL e publicá-lo no RabbitMQ. Para isso, a implementação deverá adotar um mecanismo de recuperação dos jobs `queued` que ainda não foram entregues (por exemplo, outbox transacional ou reconciliador) e consumidores idempotentes que suportem mensagens repetidas. O número de workers controla a concorrência.
+**Não considerar o requisito atendido nesta fundação.** Precisamos garantir que um trabalho aceito não se perca na falha entre registrar o job no PostgreSQL e publicá-lo no RabbitMQ. Para isso, a implementação deverá adotar um mecanismo de recuperação dos jobs `queued` que ainda não foram entregues (por exemplo, outbox transacional ou reconciliador) e consumidores idempotentes que suportem mensagens repetidas. O número de workers controla a concorrência. **Neste PR #2, a API autentica e consulta jobs, mas ainda não os aceita nem os enfileira.**
 
 ## Origem do processamento
 
@@ -53,3 +53,9 @@ O protótipo FIAP usa `ffmpeg -vf fps=1` e entrega PNGs em ZIP. A implementaçã
 - Senhas de desenvolvimento do Compose não devem ser reutilizadas em ambientes públicos.
 
 Veja [requisitos e critérios de aceite](requirements.md).
+
+## Autenticação e autorização (PR #2)
+
+A API usa `bcrypt` para armazenar senhas e tokens JWT HS256 com expiração de uma hora. O segredo é informado via `AUTH_JWT_SECRET` (mínimo 32 bytes). As consultas `GET /api/jobs` e `GET /api/jobs/{id}` filtram `user_id` no próprio SQL, impedindo acesso cruzado mesmo quando o ID de um job é conhecido. Registro e login são públicos; consulta de perfil e de jobs exige Bearer token.
+
+Esta entrega não demonstra ainda upload, concorrência ou recuperação de pedidos; estes itens permanecem explicitamente pendentes.

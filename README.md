@@ -2,7 +2,7 @@
 
 Projeto do Hackathon FIAP X. O objetivo é receber vídeos de usuários autenticados, processá-los em paralelo, gerar um ZIP com imagens extraídas, permitir download e acompanhar os estados dos trabalhos, sem perder solicitações aceitas em picos de demanda.
 
-> **Estado: fundação técnica (PR inicial).** Esta versão contém a estrutura, infraestrutura local, pipeline de CI, contrato de dados inicial e o módulo de extração FFmpeg/ZIP com testes. **Não implementa ainda** login, upload, fila de jobs, execução por worker, status por usuário, armazenamento de vídeos/ZIPs nem notificações. O endpoint da API neste momento é apenas um health check.
+> **Estado: implementação incremental (PR #2).** O projeto já possui registro/login com hash bcrypt, tokens de acesso assinados, consultas de perfil e consulta persistida de jobs **restritas ao usuário autenticado**. Ainda não há upload, publicação de jobs no RabbitMQ, consumo pelo worker, download, notificação de falhas ou CD completo.
 
 ## Componentes previstos
 
@@ -18,8 +18,12 @@ API e worker são aplicações distintas no mesmo repositório. O código fornec
 ## Estrutura
 
 ```text
-cmd/api/                 servidor HTTP (somente health check por enquanto)
+cmd/api/                 servidor HTTP (autenticação e consultas de jobs)
 cmd/worker/              processo separado (consumo de fila pendente)
+internal/auth/           bcrypt + tokens HMAC-SHA256 e testes
+internal/httpapi/        rotas REST, autorização e testes de handlers
+internal/store/          persistência PostgreSQL (usuários + jobs)
+internal/identity/       criação/validação de IDs UUID
 internal/processing/     extração FFmpeg + criação de ZIP e testes
 migrations/              DDL inicial de usuários e jobs
 deploy/                  Dockerfiles separados
@@ -46,6 +50,31 @@ docker compose down
 
 **Atenção:** credenciais e portas do Compose são apenas para desenvolvimento local, nunca produção. A migração em `migrations/` roda na primeira inicialização de um volume PostgreSQL vazio; para aplicar alterações posteriores, será necessário um mecanismo de migrações.
 
+## Autenticação e consulta de jobs
+
+A API utiliza **hash bcrypt** para as senhas (12–72 bytes) e **Bearer JWT HS256**, válido por uma hora. A chave `AUTH_JWT_SECRET` é obrigatória na aplicação (mínimo 32 bytes); o valor padrão no Docker Compose é **somente para desenvolvimento local** e deve ser substituído fora desse ambiente.
+
+| Método e rota | Autenticado? | Resultado |
+| --- | --- | --- |
+| `POST /api/auth/register` | Não | Cria conta e devolve token |
+| `POST /api/auth/login` | Não | Autentica e devolve token |
+| `GET /api/me` | Sim | Perfil do usuário |
+| `GET /api/jobs` | Sim | Lista até 100 jobs pertencentes ao usuário |
+| `GET /api/jobs/{id}` | Sim | Detalhe do job pertencente ao usuário; 404 para jobs de terceiros |
+| `GET /health/live` | Não | Liveness da API |
+
+Exemplo de teste manual após `docker compose up --build -d`:
+
+```bash
+curl -X POST http://localhost:8080/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"estudante@example.com","password":"uma-senha-bem-forte-2026"}'
+```
+
+O resultado inclui `accessToken`. Envie o valor no cabeçalho `Authorization: Bearer <accessToken>` para acessar `/api/me` e `/api/jobs`. A lista estará vazia até o fluxo de upload e processamento ser implementado.
+
+**Limitações atuais:** não há criação de jobs por API, processamento assíncrono, upload ou download neste PR. O banco PostgreSQL deve estar disponível para a API iniciar.
+
 ## Testes e CI
 
 ```bash
@@ -60,9 +89,9 @@ O workflow de GitHub Actions executa build, vet, testes/race e valida os Dockerf
 
 ## Próximas entregas (PRs separados)
 
-1. Registro/login seguro, emissão de token, autorização por usuário e API de jobs.
-2. Upload com tamanho limitado, persistência de entrada e saída no MinIO e publicação segura de jobs no RabbitMQ.
-3. Worker funcional, recuperação de solicitações, retries, atualização persistente de status, ZIP e notificações de falha.
+1. **Concluído neste PR:** registro/login, token assinado, autorização e leitura de jobs por usuário.
+2. **Próximo PR:** upload com tamanho limitado, persistência de entrada no MinIO e publicação recuperável de jobs no RabbitMQ.
+3. Worker funcional, retries, atualização persistente de status, armazenamento do ZIP, downloads autorizados e notificações de falha.
 4. Testes de concorrência/picos, integração, documentação final e demonstração de até 10 minutos.
 
 Confira [decisões de arquitetura](docs/architecture.md) e [matriz de requisitos](docs/requirements.md).
