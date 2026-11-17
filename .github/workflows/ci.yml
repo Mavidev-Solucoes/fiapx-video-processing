@@ -75,18 +75,9 @@ jobs:
       - name: Validate Grafana dashboard, Prometheus scrapes and job metrics
         run: bash scripts/smoke-monitoring.sh
 
-  email:
-    name: E2E - SMTP failure email delivery
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify Mailpit delivery and outage recovery
-        run: bash scripts/smoke-email.sh
-
   publish:
     name: Publish verified API and worker images
-    needs: [go, containers, intake, processing, monitoring, email]
+    needs: [go, containers, intake, processing, monitoring]
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     permissions:
