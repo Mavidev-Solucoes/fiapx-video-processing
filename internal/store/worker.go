@@ -122,6 +122,15 @@ func (p *Postgres) FailOrRetryJob(ctx context.Context, jobID, token, reason stri
 		if err != nil {
 			return fmt.Errorf("persist failure notification: %w", err)
 		}
+		// Persist delivery intent in the same transaction as terminal failure
+		// and the user-visible notification. SMTP delivery occurs asynchronously.
+		_, err = tx.ExecContext(ctx, `INSERT INTO notification_email_outbox (notification_id)
+			SELECT id FROM user_notifications
+			WHERE job_id=$1::uuid AND category='processing_failed'
+			ON CONFLICT (notification_id) DO NOTHING`, jobID)
+		if err != nil {
+			return fmt.Errorf("persist email delivery intent: %w", err)
+		}
 	}
 	return tx.Commit()
 }

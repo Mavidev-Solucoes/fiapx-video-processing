@@ -27,7 +27,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: ["sh", "-ec", "psql -h postgres -U fiapx -d fiapx -v ON_ERROR_STOP=1 -f /migrations/002_job_outbox.sql && psql -h postgres -U fiapx -d fiapx -v ON_ERROR_STOP=1 -f /migrations/003_worker_leases.sql && psql -h postgres -U fiapx -d fiapx -v ON_ERROR_STOP=1 -f /migrations/004_notifications.sql"]
+    command: ["sh", "-ec", "psql -h postgres -U fiapx -d fiapx -v ON_ERROR_STOP=1 -f /migrations/002_job_outbox.sql && psql -h postgres -U fiapx -d fiapx -v ON_ERROR_STOP=1 -f /migrations/003_worker_leases.sql && psql -h postgres -U fiapx -d fiapx -v ON_ERROR_STOP=1 -f /migrations/004_notifications.sql && psql -h postgres -U fiapx -d fiapx -v ON_ERROR_STOP=1 -f /migrations/005_email_outbox.sql"]
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
@@ -77,6 +77,12 @@ services:
     environment:
       HTTP_ADDR: ":8080"
       METRICS_ADDR: ":9091"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-465}"
+      SMTP_FROM: "${SMTP_FROM:-notifications@fiapx.test}"
+      SMTP_USERNAME: "${SMTP_USERNAME:-}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      SMTP_CA_FILE: "${SMTP_CA_FILE:-}"
       DATABASE_URL: "postgres://fiapx:${POSTGRES_PASSWORD:-fiapx-local-only}@postgres:5432/fiapx?sslmode=disable"
       AUTH_JWT_SECRET: "${AUTH_JWT_SECRET:-fiapx-local-development-jwt-secret-change-this-before-deployment}"
       RABBITMQ_URL: "amqp://fiapx:${RABBITMQ_PASSWORD:-fiapx-local-only}@rabbitmq:5672/"

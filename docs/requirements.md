@@ -8,11 +8,11 @@ Base: enunciado `POSTECH - SOAT - Fase 5 - Hacka.pdf`, páginas 3–4. Esta matr
 | Não perder solicitação aceita durante indisponibilidade | Upload e outbox transacional persistidos; publicação com confirmação; lease e ACK manual no consumo | `smoke-intake.sh`, recuperação de lease no `smoke-processing.sh` |
 | Autenticação com usuário e senha | Bcrypt e JWT; endpoints privados | Testes `internal/auth`, `internal/httpapi` |
 | Status por usuário | `queued`, `processing`, `completed`, `failed` filtrados por proprietário | API `/api/jobs`; E2E com usuários A/B |
-| Notificação em caso de erro | Aviso in-app criado atomicamente em falha terminal, restrito ao dono e marcável como lido | `/api/notifications`, `smoke-processing.sh` |
+| Notificação em caso de erro | Aviso in-app e email SMTP com persistência atômica, retries e envio ao Mailpit local | `/api/notifications`, `smoke-processing.sh`, `smoke-email.sh` |
 | Banco de dados e persistência | PostgreSQL com migrations, volumes; armazenamento privado S3 | `migrations/`, `docker-compose.yml` |
 | Arquitetura escalável | API/worker separados, escaláveis por `--scale worker=N` | `cmd/api`, `cmd/worker`, scripts |
 | Versionamento GitHub | Repositório com commits e PRs isolados | Histórico do GitHub |
-| Testes e automação | Go race tests, build, vet, Docker Compose, três testes E2E | `.github/workflows/ci.yml` |
+| Testes e automação | Go race tests, build, vet, Docker Compose, quatro testes E2E | `.github/workflows/ci.yml` |
 | CI/CD | Validação em PR e imagens GHCR após CI verde no main; deploy Compose reproduzível | `.github/workflows/ci.yml` (job `publish`), `scripts/deploy-release.sh` |
 | Monitoramento (stack recomendada) | Prometheus + Grafana, métricas dos jobs e RabbitMQ, regras de alerta | `observability/`, `smoke-monitoring.sh`, dashboard provisionado |
 | Documentação de arquitetura | Diagrama, decisões, fluxos e limitações | `docs/architecture.md` |
