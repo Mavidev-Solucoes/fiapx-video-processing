@@ -12,6 +12,7 @@ import (
 
 	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/auth"
 	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/download"
+	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/email"
 	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/httpapi"
 	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/intake"
 	"github.com/Mavidev-Solucoes/fiapx-video-processing/internal/monitoring"
@@ -48,6 +49,16 @@ func main() {
 		log.Fatalf("broker configuration: %v", err)
 	}
 	go dispatchPending(ctx, database, publisher)
+
+	emailSender, err := email.NewFromEnv()
+	if err != nil {
+		log.Fatalf("SMTP configuration: %v", err)
+	}
+	if emailSender != nil {
+		go dispatchFailureEmails(ctx, database, emailSender)
+	} else {
+		log.Printf("SMTP disabled; in-app notifications remain enabled, email intents retained")
+	}
 
 	metricsAddr := os.Getenv("METRICS_ADDR")
 	if metricsAddr == "" {
@@ -102,6 +113,26 @@ func dispatchPending(ctx context.Context, database *store.Postgres, publisher *q
 			log.Printf("outbox retry scheduled: %v", err)
 		} else if count > 0 {
 			log.Printf("published %d queued video jobs", count)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func dispatchFailureEmails(ctx context.Context, database *store.Postgres, sender *email.Sender) {
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+	for {
+		batchCtx, cancel := context.WithTimeout(ctx, 75*time.Second)
+		count, err := database.DispatchFailureEmails(batchCtx, sender)
+		cancel()
+		if err != nil && ctx.Err() == nil {
+			log.Printf("email dispatcher will retry: %v", err)
+		} else if count > 0 {
+			log.Printf("failure notification emails accepted by SMTP relay: %d", count)
 		}
 		select {
 		case <-ctx.Done():
