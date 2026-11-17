@@ -48,6 +48,7 @@ Observação: o ZIP contém **uma imagem PNG por segundo** (`ffmpeg -vf fps=1`),
 | --- | --- |
 | UI/API | http://localhost:8080/ |
 | RabbitMQ Management | http://localhost:15672/ |
+| Mailpit (local email capture) | http://localhost:8025/ |
 | Console de objetos | http://localhost:9001/ |
 | PostgreSQL | localhost:5432 |
 | Grafana (monitoramento) | http://localhost:3000/d/fiapx-operations |
@@ -64,6 +65,26 @@ O Grafana apresenta **API disponível, exportador RabbitMQ disponível, número 
 O arquivo `observability/prometheus/alerts.yml` possui regras para serviços indisponíveis, ausência de consumidores e acúmulo de jobs/outbox. Elas podem ser vistas no Prometheus em **Status → Rules / Alerts**. **Importante:** regras avaliadas não enviam páginas/e-mails automaticamente; um Alertmanager ou contact point seria necessário para notificação externa. Grafana e Prometheus são recursos locais de demonstração e mantêm dados em volumes Docker.
 
 Para executar somente a aplicação sem observabilidade: `docker compose up -d --build --scale worker=2`. Para executar também o dashboard: `docker compose --profile monitoring up -d --build --scale worker=2`.
+
+## Email notifications on processing failures (SMTP)
+
+FIAP X already includes authenticated registration, login, per-user video status screens, ZIP downloads, and private in-app failure notifications. This feature adds **optional SMTP email delivery to the address registered by the user**.
+
+When a worker permanently marks a video as `failed`, it persists the in-app notification and a unique email intent together with the job status in one PostgreSQL transaction. The API's independent dispatcher sends those emails with retries/backoff; temporary SMTP failures do not block video processing. It records relay acceptance in `notification_email_outbox`.
+
+### Local demonstration with Mailpit (no real external emails)
+
+Run `bash scripts/deploy-local.sh` from the repository root. It starts the application, Grafana, and a Mailpit SMTP capture inbox at **http://localhost:8025/**. Register with a sample email, upload an invalid `.mp4`, and compare the `failed` job/in-app alert with the captured message in Mailpit.
+
+The local-only `docker-compose.mail.yml` overlay sets `SMTP_HOST=mailpit`, port `1025` and permits plaintext SMTP **only for the Mailpit container**. Messages are captured locally and are not forwarded to recipients. To run without this overlay, use the base Docker Compose configuration.
+
+### Real SMTP provider
+
+Set `SMTP_HOST`, `SMTP_PORT` (587 by default), `SMTP_FROM`, and optionally `SMTP_USERNAME` plus `SMTP_PASSWORD` using local environment variables or an uncommitted `.env` file. External relays **must support STARTTLS** (TLS certificate verification enforced). Implicit TLS on port 465 is not supported. Do not use the local Mailpit overlay in production.
+
+When `SMTP_HOST` is absent, in-app notifications continue to work and email intents remain in the database. After configuring SMTP, pending messages are retried (maximum 8 attempts). Delivery is *at least once to the SMTP relay*, not guaranteed delivery to the external inbox; duplicates are possible if the process crashes between SMTP acceptance and the database commit. A production deployment needs user email verification and abuse/rate limiting before enabling open registration.
+
+CI additionally runs `bash scripts/smoke-email.sh` to verify captured SMTP delivery, durable retry while Mailpit is down, and nonduplicated email intents.
 
 ## Endpoints REST
 
@@ -110,13 +131,14 @@ go vet ./...
 bash scripts/smoke-intake.sh
 bash scripts/smoke-processing.sh
 bash scripts/smoke-monitoring.sh
+bash scripts/smoke-email.sh
 ```
 
 O GitHub Actions executa testes unitários, análise estática, build Go, verificação do JavaScript, builds das imagens, testes end-to-end e a inicialização/verificação do stack de monitoramento com métricas reais. Os cenários verificam aceitação com RabbitMQ fora do ar, dois workers processando vídeos reais, PNGs no ZIP, isolamento entre usuários, idempotência, vídeo inválido, notificação privada e recuperação de lease expirada. Os scripts E2E **apagam os volumes de teste** ao terminar; não os execute sobre dados importantes.
 
 ## CI/CD e deployment
 
-- **CI/CD:** `.github/workflows/ci.yml` — testes e verificações obrigatórios; o job `publish` depende de **todos os cinco jobs de validação** e roda somente em `push` para `main`, com `packages: write` concedido apenas a ele.
+- **CI/CD:** `.github/workflows/ci.yml` — testes e verificações obrigatórios; o job `publish` depende de **todos os seis jobs de validação** e roda somente em `push` para `main`, com `packages: write` concedido apenas a ele.
 - **Publicação GHCR:** as imagens API e worker recebem tags `latest` e SHA do commit. Não há `workflow_run` privilegiado nem execução de código obtido de um workflow anterior. Confira a publicação no primeiro CI do `main` após o merge.
 - **Deployment local a partir do código:** `bash scripts/deploy-local.sh`.
 - **Deployment com imagens publicadas:** `FIAPX_TAG=<SHA> bash scripts/deploy-release.sh` (autentique-se com `docker login ghcr.io` caso as imagens não estejam públicas).

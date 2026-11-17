@@ -40,6 +40,14 @@ flowchart TD
 5. Falha na decodificação é terminal. Indisponibilidade transitória tenta novamente até o limite de três tentativas. Na falha definitiva, o estado `failed` e uma notificação `processing_failed` são gravados atomicamente; o índice único impede avisos repetidos.
 6. Ao reiniciar um worker que caiu, a mensagem não confirmada é reentregue. Depois da expiração da lease, outro worker pode reivindicar a execução. O token de fencing impede que a execução antiga finalize um job cujo controle perdeu.
 
+## Notificações por e-mail (SMTP)
+
+Na falha terminal, o worker persiste **status `failed` + notificação in-app + intenção de e-mail** na mesma transação PostgreSQL. A tabela `notification_email_outbox` tem chave única para `notification_id`; um dispatcher assíncrono na API consulta lotes com `FOR UPDATE SKIP LOCKED`, envia ao SMTP e grava confirmação do relay. Falhas geram tentativas limitadas com backoff, sem interromper uploads/processamento.
+
+O overlay Compose `docker-compose.mail.yml` oferece Mailpit para demonstração em `http://localhost:8025/`, com SMTP acessível somente dentro da rede Docker. Para um relay real, `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM` e eventuais credenciais são configurados fora do Git; STARTTLS é obrigatório. Sem SMTP, os avisos in-app continuam disponíveis e os emails ficam pendentes até configuração.
+
+A garantia é de **pelo menos uma entrega ao relay**; o cliente final pode não receber (rejeição, spam ou bounce) e há risco de duplicidade após uma falha entre confirmação SMTP e commit. A verificação de propriedade dos endereços de email não foi implementada nesta entrega de demonstração.
+
 ## Observabilidade e monitoramento
 
 O projeto inclui um perfil opcional `monitoring` com **Prometheus** (coleta de métricas e avaliação de alertas) e **Grafana** (dashboard já provisionado via arquivos versionados).
@@ -63,6 +71,7 @@ O projeto inclui um perfil opcional `monitoring` com **Prometheus** (coleta de m
 ## Evidências automatizadas
 
 - `scripts/smoke-intake.sh`: aceita upload mesmo após parar RabbitMQ e demonstra reenfileiramento.
+- `scripts/smoke-email.sh`: verifica email capturado pelo Mailpit, falha do servidor SMTP e reenvio após recuperação.
 - `scripts/smoke-processing.sh`: processa dois vídeos reais com workers paralelos, confere ZIP, acesso por usuário, duplicidade e falha terminal, consulta notificação privada, confirma leitura e recupera uma lease simulada como expirada.
 - `.github/workflows/ci.yml`: executa testes, os três E2E e valida que Prometheus/Grafana capturam métricas reais.
 - `.github/workflows/ci.yml`: o job `publish` publica imagens no GHCR somente após todos os jobs de validação concluírem com sucesso, em um `push` para `main`; o token com escrita em pacotes é limitado a esse job.
