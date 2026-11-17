@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/lib/pq"
-	_ "github.com/lib/pq"
 )
 
 var ErrEmailExists = errors.New("email is already registered")
