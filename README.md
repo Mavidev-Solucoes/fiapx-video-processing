@@ -127,7 +127,8 @@ Um segundo usuário não consegue consultar ou baixar jobs e notificações de o
 
 ```bash
 go test -race -covermode=atomic -coverprofile=coverage.out ./...
-go tool cover -func=coverage.out
+go tool cover -func=coverage.out | tee coverage-summary.txt
+bash scripts/check-coverage.sh coverage-summary.txt
 go tool cover -html=coverage.out # opcional: relatório navegável local
 go vet ./...
 bash scripts/smoke-intake.sh
@@ -136,7 +137,11 @@ bash scripts/smoke-monitoring.sh
 bash scripts/smoke-email.sh
 ```
 
-O job **Go build, vet and tests** do GitHub Actions executa os testes com detector de race e cobertura, publica o percentual agregado no resumo do job e salva `coverage.out` e `coverage-summary.txt` como artifact **`go-coverage-report`** (retenção de 30 dias). Para baixar: abra a execução do workflow e procure **Artifacts → go-coverage-report**. **Não existe percentual mínimo exigido nem bloqueio por threshold**: o perfil mede a cobertura dos testes Go e não substitui as provas E2E em contêineres.
+O job **Go build, vet and tests** do GitHub Actions executa os testes com detector de race e cobertura, publica o percentual agregado no resumo do job e salva `coverage.out` e `coverage-summary.txt` como artifact **`go-coverage-report`** (retenção de 30 dias). Para baixar: abra a execução do workflow e procure **Artifacts → go-coverage-report**. O percentual de cobertura Go é medido separadamente dos testes E2E em contêineres.
+
+O projeto exige **cobertura mínima de 80,0% de statements Go** em todos os pacotes incluídos por `./...`. O passo `Enforce minimum 80% Go statement coverage` reprova o job `go` quando a cobertura medida fica abaixo do limite e impede a publicação das imagens. O perfil e o resumo de cobertura são publicados **antes do gate**, para que o relatório continue disponível mesmo quando a verificação falha. O limiar não exclui pacotes sem testes, e os cenários Docker E2E não são contados nesse percentual. O verificador possui autotestes de limite em `scripts/test-coverage-gate.sh`.
+
+**Situação atual:** a primeira medição foi de **39,6%**. Logo, o novo gate ficará vermelho até a inclusão de testes reais que elevem a cobertura a pelo menos 80,0%. Não modifique o limiar, nem retire produção do perfil, para torná-lo verde.
 
 Além disso, a CI executa build, `go vet`, validação do JavaScript, builds Docker e **quatro cenários de integração** (intake/RabbitMQ, FFmpeg/ZIP, Prometheus/Grafana e SMTP/Mailpit). As provas cobrem recuperação do broker, isolamento entre usuários, notificações e recuperação de processamento. Os scripts E2E **apagam volumes de teste** ao terminar; não os execute sobre dados importantes.
 

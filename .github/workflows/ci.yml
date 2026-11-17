@@ -30,6 +30,8 @@ jobs:
         run: go build ./cmd/api ./cmd/worker
       - name: Vet
         run: go vet ./...
+      - name: Test coverage threshold enforcement
+        run: bash scripts/test-coverage-gate.sh
       - name: Tests with race detector and coverage
         run: |
           go test -race -covermode=atomic -coverprofile=coverage.out ./...
@@ -49,6 +51,8 @@ jobs:
             coverage-summary.txt
           if-no-files-found: error
           retention-days: 30
+      - name: Enforce minimum 80% Go statement coverage
+        run: bash scripts/check-coverage.sh coverage-summary.txt
 
   containers:
     name: Docker and Compose validation
