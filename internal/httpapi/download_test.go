@@ -35,7 +35,9 @@ func (f *fakeDownload) OpenForUser(_ context.Context, userID, jobID string) (io.
 func TestDownloadOwnershipAndStatuses(t *testing.T) {
 	db := &memoryStore{users: map[string]store.User{}, jobs: map[string][]store.Job{}}
 	tokenService, err := auth.NewTokens("a-local-secret-longer-than-thirty-two-bytes-for-tests")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	tokenA, _ := tokenService.Issue(userA)
 	tokenB, _ := tokenService.Issue(userB)
 	download := &fakeDownload{expectedUser: userA, expectedJob: jobA, data: "ZIP-CONTENT"}

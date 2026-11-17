@@ -16,10 +16,10 @@ import (
 )
 
 type API struct {
-	users    store.Users
-	jobs     store.Jobs
-	tokens   *auth.Tokens
-	uploader Uploader
+	users      store.Users
+	jobs       store.Jobs
+	tokens     *auth.Tokens
+	uploader   Uploader
 	downloader Downloader
 }
 

@@ -10,19 +10,22 @@ import (
 )
 
 type fakeJobs struct {
-	key string
-	err error
+	key  string
+	err  error
 	user string
-	id string
+	id   string
 }
+
 func (f *fakeJobs) GetCompletedOutput(_ context.Context, u, id string) (string, error) {
 	f.user, f.id = u, id
 	return f.key, f.err
 }
+
 type fakeBlobs struct {
-	key string
+	key   string
 	calls int
 }
+
 func (f *fakeBlobs) Get(_ context.Context, k string) (io.ReadCloser, error) {
 	f.calls++
 	f.key = k
@@ -35,11 +38,17 @@ func TestDownloadChecksOwnershipFirst(t *testing.T) {
 	if _, err := service.OpenForUser(context.Background(), "other-user", "job"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("expected ownership rejection, got %v", err)
 	}
-	if objects.calls != 0 { t.Fatal("read private object before checking owner") }
+	if objects.calls != 0 {
+		t.Fatal("read private object before checking owner")
+	}
 	jobs.err = nil
 	jobs.key = "outputs/owner/job/frames.zip"
 	body, err := service.OpenForUser(context.Background(), "owner", "job")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer body.Close()
-	if objects.calls != 1 || objects.key != jobs.key { t.Fatal("incorrect object selected") }
+	if objects.calls != 1 || objects.key != jobs.key {
+		t.Fatal("incorrect object selected")
+	}
 }
