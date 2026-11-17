@@ -19,7 +19,7 @@ var ErrInvalidToken = errors.New("invalid or expired access token")
 const (
 	tokenIssuer = "fiapx-video-processing"
 	tokenTTL    = time.Hour
-	tokenHeader = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" // {"alg":"HS256","typ":"JWT"}
+	tokenHeader = "***" // {"alg":"HS256","typ":"JWT"}
 )
 
 type claims struct {
@@ -59,10 +59,10 @@ func (t *Tokens) Issue(subject string) (string, error) {
 	}
 	now := t.now().UTC()
 	content, err := json.Marshal(claims{
-		Subject: subject,
-		Issuer: tokenIssuer,
+		Subject:  subject,
+		Issuer:   tokenIssuer,
 		IssuedAt: now.Unix(),
-		Expires: now.Add(tokenTTL).Unix(),
+		Expires:  now.Add(tokenTTL).Unix(),
 	})
 	if err != nil {
 		return "", fmt.Errorf("encode claims: %w", err)

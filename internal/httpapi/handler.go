@@ -75,7 +75,7 @@ func (a *API) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"user": map[string]string{"id": id, "email": email},
+		"user":        map[string]string{"id": id, "email": email},
 		"accessToken": token, "tokenType": "Bearer", "expiresInSeconds": 3600,
 	})
 }
@@ -110,7 +110,7 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"user": map[string]string{"id": user.ID, "email": user.Email},
+		"user":        map[string]string{"id": user.ID, "email": user.Email},
 		"accessToken": token, "tokenType": "Bearer", "expiresInSeconds": 3600,
 	})
 }
@@ -119,7 +119,7 @@ func (a *API) protected(next func(http.ResponseWriter, *http.Request, string)) h
 	return func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Fields(r.Header.Get("Authorization"))
 		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-			writeError(w, http.StatusUnauthorized, "Bearer token required")
+			writeError(w, http.StatusUnauthorized, "*** required")
 			return
 		}
 		userID, err := a.tokens.Verify(parts[1])

@@ -21,20 +21,6 @@ jobs:
           cache: false
       - name: Download module dependencies
         run: go mod download
-      - name: Capture generated Go module sums and formatting for the PR
-        run: |
-          go mod tidy
-          echo "__GO_SUM_BEGIN__"
-          cat go.sum
-          echo "__GO_SUM_END__"
-          find cmd internal -name '*.go' -type f -print0 | while IFS= read -r -d '' file; do
-            if [ -n "$(gofmt -l "$file")" ]; then
-              echo "__GO_FILE_BEGIN__:$file"
-              gofmt "$file"
-              echo "__GO_FILE_END__:$file"
-            fi
-          done
-          gofmt -w cmd internal
       - name: gofmt
         run: |
           test -z "$(gofmt -l cmd internal)"
