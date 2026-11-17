@@ -30,7 +30,7 @@ func NewFromEnv() (*Client, error) {
 		return nil, errors.New("S3_ACCESS_KEY, S3_SECRET_KEY and S3_BUCKET are required")
 	}
 	client, err := minio.New(endpoint.Host, &minio.Options{
-		Creds: credentials.NewStaticV4(access, secret, ""),
+		Creds:  credentials.NewStaticV4(access, secret, ""),
 		Secure: endpoint.Scheme == "https",
 	})
 	if err != nil {

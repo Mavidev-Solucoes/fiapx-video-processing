@@ -49,10 +49,10 @@ func (r *Rabbit) PublishJob(ctx context.Context, jobID string) error {
 		return err
 	}
 	if err := channel.PublishWithContext(ctx, "", JobsQueue, true, false, amqp.Publishing{
-		ContentType: "application/json",
+		ContentType:  "application/json",
 		DeliveryMode: amqp.Persistent,
-		MessageId: jobID,
-		Body: body,
+		MessageId:    jobID,
+		Body:         body,
 	}); err != nil {
 		return err
 	}

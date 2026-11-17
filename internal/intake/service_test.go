@@ -12,10 +12,10 @@ import (
 )
 
 type memoryObjects struct {
-	key     string
-	mime    string
-	size    int64
-	fail    bool
+	key  string
+	mime string
+	size int64
+	fail bool
 }
 
 func (m *memoryObjects) Put(_ context.Context, key string, body io.Reader, size int64, mime string) error {
@@ -35,7 +35,7 @@ func (m *memoryObjects) Put(_ context.Context, key string, body io.Reader, size 
 
 type memoryJobs struct {
 	userID, jobID, filename, key string
-	fail bool
+	fail                         bool
 }
 
 func (m *memoryJobs) CreateQueuedJob(_ context.Context, userID, jobID, filename, key string) (store.Job, error) {
@@ -65,7 +65,10 @@ func TestCreateStoresVideoAndRecordsJob(t *testing.T) {
 func TestCreateRejectsUnsupportedAndEmptyVideo(t *testing.T) {
 	objects, jobs := &memoryObjects{}, &memoryJobs{}
 	service := New(objects, jobs)
-	for _, tc := range []struct{ name string; size int64 }{
+	for _, tc := range []struct {
+		name string
+		size int64
+	}{
 		{"script.exe", 2}, {"video.mp4", 0}, {"video.mp4", MaxVideoBytes + 1},
 	} {
 		if _, err := service.Create(context.Background(), "user", tc.name, strings.NewReader("x"), tc.size); !errors.Is(err, ErrInvalidVideo) {

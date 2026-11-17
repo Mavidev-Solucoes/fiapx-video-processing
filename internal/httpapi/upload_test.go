@@ -17,11 +17,11 @@ import (
 )
 
 type fakeUploader struct {
-	count int
-	userID string
+	count    int
+	userID   string
 	filename string
-	body string
-	err error
+	body     string
+	err      error
 }
 
 func (f *fakeUploader) Create(_ context.Context, userID, filename string, body io.Reader, size int64) (store.Job, error) {
