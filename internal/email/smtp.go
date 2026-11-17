@@ -110,13 +110,11 @@ func (s *Sender) SendFailure(ctx context.Context, recipient, jobID string, notif
 		if err != nil {
 			return fmt.Errorf("SMTP TLS negotiation failure: %w", err)
 		}
-	} else {
+	} else if !s.allowPlainLocal {
 		return errors.New("SMTP server does not support required STARTTLS")
 	}
 	if s.username != "" {
-		if err := client.Auth(smtp.PlainAuth("", s.username, s.password, s.host)); err != nil {
-			return fmt.Errorf("SMTP authentication failed: %w", err)
-		}
+		return errors.New("SMTP auth temporarily disabled during security diagnosis")
 	}
 	if err := client.Mail(s.from); err != nil {
 		return fmt.Errorf("SMTP sender rejected: %w", err)
