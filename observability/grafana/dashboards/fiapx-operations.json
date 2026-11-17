@@ -9,7 +9,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 40,
-  "version": 1,
+  "version": 2,
   "refresh": "5s",
   "time": {
     "from": "now-30m",
@@ -66,8 +66,12 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "value": null,
+                "color": "red"
+              },
+              {
+                "value": 1,
+                "color": "green"
               }
             ]
           }
@@ -118,8 +122,12 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "value": null,
+                "color": "red"
+              },
+              {
+                "value": 1,
+                "color": "green"
               }
             ]
           }
@@ -170,8 +178,12 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "value": null,
+                "color": "red"
+              },
+              {
+                "value": 1,
+                "color": "green"
               }
             ]
           }
@@ -222,8 +234,16 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "orange"
+              },
+              {
+                "value": 10,
+                "color": "red"
               }
             ]
           }
@@ -376,8 +396,16 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 120,
+                "color": "orange"
+              },
+              {
+                "value": 300,
+                "color": "red"
               }
             ]
           }
@@ -428,8 +456,16 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "orange"
+              },
+              {
+                "value": 10,
+                "color": "red"
               }
             ]
           }
@@ -532,8 +568,16 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "orange"
+              },
+              {
+                "value": 10,
+                "color": "red"
               }
             ]
           }
@@ -557,9 +601,14 @@
       },
       "targets": [
         {
-          "expr": "rabbitmq_detailed_queue_messages_ready{queue=\"fiapx.jobs\"} or rabbitmq_detailed_queue_messages_unacked{queue=\"fiapx.jobs\"}",
-          "legendFormat": "{{__name__}}",
+          "expr": "rabbitmq_detailed_queue_messages_ready{queue=\"fiapx.jobs\"}",
+          "legendFormat": "Ready",
           "refId": "A"
+        },
+        {
+          "expr": "rabbitmq_detailed_queue_messages_unacked{queue=\"fiapx.jobs\"}",
+          "legendFormat": "Unacknowledged",
+          "refId": "B"
         }
       ],
       "options": {
