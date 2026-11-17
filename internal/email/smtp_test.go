@@ -9,6 +9,7 @@ func TestEmailSenderConfiguration(t *testing.T) {
 	t.Setenv("SMTP_HOST", "")
 	t.Setenv("SMTP_USERNAME", "")
 	t.Setenv("SMTP_PASSWORD", "")
+	t.Setenv("SMTP_CA_FILE", "")
 	sender, err := NewFromEnv()
 	if err != nil || sender != nil {
 		t.Fatalf("unconfigured sender should be nil, got %v %v", sender, err)
@@ -16,16 +17,15 @@ func TestEmailSenderConfiguration(t *testing.T) {
 	t.Setenv("SMTP_HOST", "mailpit")
 	t.Setenv("SMTP_PORT", "1025")
 	t.Setenv("SMTP_FROM", "no-reply@fiapx.test")
-	t.Setenv("SMTP_ALLOW_PLAINTEXT", "true")
 	sender, err = NewFromEnv()
 	if err != nil || sender == nil {
-		t.Fatalf("local Mailpit configuration: %v", err)
+		t.Fatalf("Mailpit TLS configuration: %v", err)
 	}
-	t.Setenv("SMTP_HOST", "relay.example.net")
+	t.Setenv("SMTP_CA_FILE", "/does-not-exist/mailpit-ca.pem")
 	if _, err := NewFromEnv(); err == nil {
-		t.Fatal("insecure SMTP configuration accepted for external host")
+		t.Fatal("missing CA file accepted")
 	}
-	t.Setenv("SMTP_ALLOW_PLAINTEXT", "false")
+	t.Setenv("SMTP_CA_FILE", "")
 	t.Setenv("SMTP_USERNAME", "login")
 	if _, err := NewFromEnv(); err == nil {
 		t.Fatal("incomplete SMTP credentials accepted")
@@ -35,7 +35,8 @@ func TestEmailSenderConfiguration(t *testing.T) {
 func TestFailureEmailContainsJobButNoSecrets(t *testing.T) {
 	body := failureEmailMessage("no-reply@fiapx.test", "person@example.test",
 		"ea8e33a2-7d9e-4e88-8829-9a74a79a8499", 41)
-	for _, s := range []string{"To: person@example.test", "ID do trabalho: ea8e33a2", "Message-ID: <fiapx-failure-41", "Content-Type: text/plain"} {
+	for _, s := range []string{"To: person@example.test", "ID do trabalho: ea8e33a2",
+		"Message-ID: <fiapx-failure-41", "Content-Type: text/plain"} {
 		if !strings.Contains(body, s) {
 			t.Fatalf("missing email content: %q", s)
 		}
