@@ -23,30 +23,9 @@ jobs:
         run: go mod download
       - name: gofmt
         run: |
-          for file in $(gofmt -l cmd internal); do
-            echo "__FILE_BEGIN__:$file"
-            gofmt "$file"
-            echo "__FILE_END__:$file"
-          done
-          gofmt -w cmd internal
           test -z "$(gofmt -l cmd internal)"
       - name: Check browser JavaScript syntax
         run: node --check internal/httpapi/ui/app.js
-      - name: Diagnose SonarCloud security finding (temporary)
-        run: |
-          status=$(curl -sS --get --data-urlencode 'componentKeys=Mavidev-Solucoes_fiapx-video-processing' --data-urlencode 'pullRequest=8' --data-urlencode 'resolved=false' -o /tmp/fiapx-sonar.json -w '%{http_code}' 'https://sonarcloud.io/api/issues/search')
-          echo "SonarCloud issues API HTTP status: $status"
-          python3 - <<'PY'
-          import json
-          try:
-              data = json.load(open("/tmp/fiapx-sonar.json", encoding="utf-8"))
-              for issue in data.get("issues", []):
-                  print(json.dumps({k: issue.get(k) for k in ("rule","message","component","line","severity","type","impacts")}, ensure_ascii=False))
-              if not data.get("issues"):
-                  print(json.dumps(data)[:1200])
-          except Exception as e:
-              print("Could not decode SonarCloud response:", e)
-          PY
       - name: Build
         run: go build ./cmd/api ./cmd/worker
       - name: Vet

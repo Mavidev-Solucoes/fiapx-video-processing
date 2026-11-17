@@ -98,7 +98,7 @@ func (s *Sender) SendFailure(ctx context.Context, recipient, jobID string, notif
 		Config: &tls.Config{
 			ServerName: s.host,
 			MinVersion: tls.VersionTLS12,
-			RootCAs: s.roots,
+			RootCAs:    s.roots,
 		},
 	}
 	conn, err := dialer.DialContext(ctx, "tcp", address)
