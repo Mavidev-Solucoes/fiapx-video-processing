@@ -40,6 +40,16 @@ flowchart TD
 5. Falha na decodificação é terminal. Indisponibilidade transitória tenta novamente até o limite de três tentativas. Na falha definitiva, o estado `failed` e uma notificação `processing_failed` são gravados atomicamente; o índice único impede avisos repetidos.
 6. Ao reiniciar um worker que caiu, a mensagem não confirmada é reentregue. Depois da expiração da lease, outro worker pode reivindicar a execução. O token de fencing impede que a execução antiga finalize um job cujo controle perdeu.
 
+## Observabilidade e monitoramento
+
+O projeto inclui um perfil opcional `monitoring` com **Prometheus** (coleta de métricas e avaliação de alertas) e **Grafana** (dashboard já provisionado via arquivos versionados).
+
+- **API:** listener separado em `:9091`, disponível apenas na rede Docker. Métricas agregadas de `video_jobs` (estados, tentativas e idade), `video_job_outbox` pendente e notificações não lidas. Nenhuma identificação de usuário é exportada.
+- **Broker e workers:** o plugin nativo `rabbitmq_prometheus` expõe número de consumidores, fila pronta, mensagens sem ACK e profundidade da fila, permitindo verificar workers ativos e detectar gargalos.
+- **Prometheus:** scrape a cada 5 segundos, retenção local de 3 dias e regras para indisponibilidade, falta de consumidores e atraso de fila/outbox.
+- **Grafana:** dashboard FIAP X | Operations sem configuração manual, com métricas de disponibilidade, backlog, falhas e status.
+- **Escopo dos alertas:** regras são avaliadas e visíveis no Prometheus, mas **não há envio externo por e-mail/Slack** porque não configuramos Alertmanager ou contact points. O sistema é de monitoramento, não uma plataforma de incidente on-call.
+
 ## Escolhas e trade-offs
 
 **Dois executáveis em um repositório**, em vez de múltiplos microsserviços de negócio: respeita responsabilidades e escalabilidade sem adicionar infraestrutura desnecessária. O desafio não exige Saga nem múltiplos bancos.
@@ -48,13 +58,13 @@ flowchart TD
 
 **Notificações dentro da aplicação:** alternativa simples e verificável ao envio de e-mail. A API fornece `GET /api/notifications` e confirmação de leitura por usuário; o navegador consulta periodicamente e apresenta um alerta quando um processamento falha.
 
-**Limites conhecidos:** volumes Docker locais não substituem backup/alta disponibilidade; um upload persistido cujo commit no PostgreSQL falha pode deixar objeto órfão; a estratégia de retry é simples, sem DLQ separada; não há e-mail externo nem deploy remoto automático. Essas decisões reduzem escopo sem esconder as limitações.
+**Limites conhecidos:** os alertas não enviam notificações externas; os agregados não substituem tracing distribuído nem logs centralizados. Volumes Docker locais não substituem backup/alta disponibilidade; um upload persistido cujo commit no PostgreSQL falha pode deixar objeto órfão; a estratégia de retry é simples, sem DLQ separada; não há e-mail externo nem deploy remoto automático. Essas decisões reduzem escopo sem esconder as limitações.
 
 ## Evidências automatizadas
 
 - `scripts/smoke-intake.sh`: aceita upload mesmo após parar RabbitMQ e demonstra reenfileiramento.
 - `scripts/smoke-processing.sh`: processa dois vídeos reais com workers paralelos, confere ZIP, acesso por usuário, duplicidade e falha terminal, consulta notificação privada, confirma leitura e recupera uma lease simulada como expirada.
-- `.github/workflows/ci.yml`: executa testes e os dois E2E em contêineres.
+- `.github/workflows/ci.yml`: executa testes, os três E2E e valida que Prometheus/Grafana capturam métricas reais.
 - `.github/workflows/ci.yml`: o job `publish` publica imagens no GHCR somente após todos os jobs de validação concluírem com sucesso, em um `push` para `main`; o token com escrita em pacotes é limitado a esse job.
 
 Veja [matriz de requisitos](requirements.md) e [roteiro de demonstração](demo.md).

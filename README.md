@@ -10,6 +10,7 @@ Aplicação para receber vídeos de usuários autenticados, processá-los de for
 - **RabbitMQ:** fila durável `fiapx.jobs` com mensagens persistentes, publisher confirms e ACK manual.
 - **Armazenamento S3 compatível (MinIO/Silo no Compose):** vídeos originais e ZIPs privados.
 - **Docker Compose:** infraestrutura e execução local reproduzíveis, sem Kubernetes obrigatório.
+- **Prometheus + Grafana:** métricas operacionais da API e RabbitMQ, alertas avaliados pelo Prometheus e dashboard provisionado.
 
 ```text
 Navegador / cliente REST
@@ -49,8 +50,20 @@ Observação: o ZIP contém **uma imagem PNG por segundo** (`ffmpeg -vf fps=1`),
 | RabbitMQ Management | http://localhost:15672/ |
 | Console de objetos | http://localhost:9001/ |
 | PostgreSQL | localhost:5432 |
+| Grafana (monitoramento) | http://localhost:3000/d/fiapx-operations |
+| Prometheus (métricas e regras) | http://localhost:9090/ |
 
-**Segurança:** o Compose contém credenciais de desenvolvimento e expõe portas somente em `127.0.0.1`. Configure `AUTH_JWT_SECRET`, `POSTGRES_PASSWORD`, `RABBITMQ_PASSWORD`, `MINIO_USER` e `MINIO_PASSWORD` antes de qualquer implantação fora de um ambiente local controlado. Não exponha o Compose diretamente à internet sem TLS e revisão de segurança.
+**Segurança:** o Compose contém credenciais de desenvolvimento e expõe portas somente em `127.0.0.1`. Configure `AUTH_JWT_SECRET`, `POSTGRES_PASSWORD`, `RABBITMQ_PASSWORD`, `MINIO_USER`, `MINIO_PASSWORD` e `GRAFANA_ADMIN_PASSWORD` antes de qualquer implantação fora de um ambiente local controlado. Não exponha o Compose diretamente à internet sem TLS e revisão de segurança.
+
+## Monitoramento operacional
+
+O script de deployment habilita o perfil Compose `monitoring` automaticamente. Abra **http://localhost:3000/d/fiapx-operations**. No ambiente local, use **admin** e senha **fiapx-monitoring-local** (ou as variáveis `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`). As configurações de datasource e dashboard são versionadas em `observability/`, portanto não exigem criação manual.
+
+O Grafana apresenta **API disponível, exportador RabbitMQ disponível, número de workers consumidores, eventos de outbox pendentes, jobs por estado, profundidade da fila, tempo do job mais antigo em fila/processamento e notificações de erro não lidas**. A API expõe os agregados em `api:9091/metrics` apenas na rede Docker, sem dados de usuários. O RabbitMQ usa seu plugin oficial `rabbitmq_prometheus` e expõe filas em `rabbitmq:15692/metrics/detailed`. Ambos são coletados pelo Prometheus a cada 5 segundos. 
+
+O arquivo `observability/prometheus/alerts.yml` possui regras para serviços indisponíveis, ausência de consumidores e acúmulo de jobs/outbox. Elas podem ser vistas no Prometheus em **Status → Rules / Alerts**. **Importante:** regras avaliadas não enviam páginas/e-mails automaticamente; um Alertmanager ou contact point seria necessário para notificação externa. Grafana e Prometheus são recursos locais de demonstração e mantêm dados em volumes Docker.
+
+Para executar somente a aplicação sem observabilidade: `docker compose up -d --build --scale worker=2`. Para executar também o dashboard: `docker compose --profile monitoring up -d --build --scale worker=2`.
 
 ## Endpoints REST
 
@@ -96,13 +109,14 @@ go test -race ./...
 go vet ./...
 bash scripts/smoke-intake.sh
 bash scripts/smoke-processing.sh
+bash scripts/smoke-monitoring.sh
 ```
 
-O GitHub Actions executa testes unitários, análise estática, build Go, verificação do JavaScript, builds das imagens e testes end-to-end com Docker Compose. Os cenários verificam aceitação com RabbitMQ fora do ar, dois workers processando vídeos reais, PNGs no ZIP, isolamento entre usuários, idempotência, vídeo inválido, notificação privada e recuperação de lease expirada. Os scripts E2E **apagam os volumes de teste** ao terminar; não os execute sobre dados importantes.
+O GitHub Actions executa testes unitários, análise estática, build Go, verificação do JavaScript, builds das imagens, testes end-to-end e a inicialização/verificação do stack de monitoramento com métricas reais. Os cenários verificam aceitação com RabbitMQ fora do ar, dois workers processando vídeos reais, PNGs no ZIP, isolamento entre usuários, idempotência, vídeo inválido, notificação privada e recuperação de lease expirada. Os scripts E2E **apagam os volumes de teste** ao terminar; não os execute sobre dados importantes.
 
 ## CI/CD e deployment
 
-- **CI/CD:** `.github/workflows/ci.yml` — testes e verificações obrigatórios; o job `publish` depende de **todos os quatro jobs de validação** e roda somente em `push` para `main`, com `packages: write` concedido apenas a ele.
+- **CI/CD:** `.github/workflows/ci.yml` — testes e verificações obrigatórios; o job `publish` depende de **todos os cinco jobs de validação** e roda somente em `push` para `main`, com `packages: write` concedido apenas a ele.
 - **Publicação GHCR:** as imagens API e worker recebem tags `latest` e SHA do commit. Não há `workflow_run` privilegiado nem execução de código obtido de um workflow anterior. Confira a publicação no primeiro CI do `main` após o merge.
 - **Deployment local a partir do código:** `bash scripts/deploy-local.sh`.
 - **Deployment com imagens publicadas:** `FIAPX_TAG=<SHA> bash scripts/deploy-release.sh` (autentique-se com `docker login ghcr.io` caso as imagens não estejam públicas).
