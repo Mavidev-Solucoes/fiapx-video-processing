@@ -32,7 +32,13 @@ jobs:
         run: go vet ./...
       - name: Test coverage threshold enforcement
         run: bash scripts/test-coverage-gate.sh
+      - name: Start PostgreSQL for transactional repository tests
+        run: |
+          docker compose up -d --wait postgres
+          docker compose run --rm schema-migrate
       - name: Tests with race detector and coverage
+        env:
+          FIAPX_TEST_DATABASE_URL: postgres://fiapx:fiapx-local-only@127.0.0.1:5432/fiapx?sslmode=disable
         run: |
           go test -race -covermode=atomic -coverprofile=coverage.out ./...
           go tool cover -func=coverage.out | tee coverage-summary.txt
