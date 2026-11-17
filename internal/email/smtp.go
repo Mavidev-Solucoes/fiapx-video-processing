@@ -4,15 +4,15 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/mail"
-	"regexp"
 	"net/textproto"
-	"encoding/base64"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -27,9 +27,8 @@ type Sender struct {
 	roots    *x509.CertPool
 }
 
-// NewFromEnv returns nil if email delivery is not configured. For a real SMTP
-// provider use implicit TLS (normally port 465). Local Mailpit presents a
-// self-signed certificate trusted exclusively via SMTP_CA_FILE.
+// NewFromEnv returns nil when SMTP is not configured. Implicit TLS is always
+// required, including for the local Mailpit test relay.
 func NewFromEnv() (*Sender, error) {
 	host := strings.TrimSpace(os.Getenv("SMTP_HOST"))
 	if host == "" {
@@ -74,83 +73,9 @@ func NewFromEnv() (*Sender, error) {
 		username: user, password: password, roots: roots}, nil
 }
 
-var smtpAddressPattern = regexp.MustCompile(`^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,63}package email
-
-import (
-	"context"
-	"crypto/tls"
-	"crypto/x509"
-	"errors"
-	"fmt"
-	"io"
-	"net"
-	"net/mail"
-	"regexp"
-	"net/textproto"
-	"encoding/base64"
-	"os"
-	"strconv"
-	"strings"
-	"time"
-)
-
-type Sender struct {
-	host     string
-	port     string
-	from     string
-	username string
-	password string
-	roots    *x509.CertPool
-}
-
-// NewFromEnv returns nil if email delivery is not configured. For a real SMTP
-// provider use implicit TLS (normally port 465). Local Mailpit presents a
-// self-signed certificate trusted exclusively via SMTP_CA_FILE.
-func NewFromEnv() (*Sender, error) {
-	host := strings.TrimSpace(os.Getenv("SMTP_HOST"))
-	if host == "" {
-		if os.Getenv("SMTP_USERNAME") != "" || os.Getenv("SMTP_PASSWORD") != "" {
-			return nil, errors.New("SMTP_HOST is required when SMTP credentials are set")
-		}
-		return nil, nil
-	}
-	if strings.ContainsAny(host, ":/ \r\n") {
-		return nil, errors.New("SMTP_HOST must be a hostname without scheme or port")
-	}
-	port := os.Getenv("SMTP_PORT")
-	if port == "" {
-		port = "465"
-	}
-	portNumber, err := strconv.Atoi(port)
-	if err != nil || portNumber < 1 || portNumber > 65535 {
-		return nil, errors.New("SMTP_PORT must be between 1 and 65535")
-	}
-	from := strings.TrimSpace(os.Getenv("SMTP_FROM"))
-	if !validAddress(from) {
-		return nil, errors.New("SMTP_FROM must be a valid email address")
-	}
-	user, password := os.Getenv("SMTP_USERNAME"), os.Getenv("SMTP_PASSWORD")
-	if (user == "") != (password == "") {
-		return nil, errors.New("SMTP_USERNAME and SMTP_PASSWORD must be supplied together")
-	}
-	roots, err := x509.SystemCertPool()
-	if err != nil {
-		roots = x509.NewCertPool()
-	}
-	if caFile := strings.TrimSpace(os.Getenv("SMTP_CA_FILE")); caFile != "" {
-		pem, err := os.ReadFile(caFile)
-		if err != nil {
-			return nil, fmt.Errorf("cannot load SMTP CA certificate: %w", err)
-		}
-		if !roots.AppendCertsFromPEM(pem) {
-			return nil, errors.New("SMTP_CA_FILE did not contain a valid certificate")
-		}
-	}
-	return &Sender{host: host, port: port, from: from,
-		username: user, password: password, roots: roots}, nil
-}
-
-)
+// Keep the SMTP envelope strict: no quoted local parts, comments,
+// internationalized addresses or characters that could inject ESMTP options.
+var smtpAddressPattern = regexp.MustCompile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,63}$")
 
 func validAddress(address string) bool {
 	if address == "" || len(address) > 254 || !smtpAddressPattern.MatchString(address) {
@@ -160,9 +85,9 @@ func validAddress(address string) bool {
 	return err == nil && value.Address == address
 }
 
-// SendFailure uses implicit TLS from the first byte and validates the SMTP
-// server certificate and hostname; there is no plaintext downgrade path.
-// SMTP DATA acceptance is not proof of end-recipient inbox delivery.
+// SendFailure operates exclusively inside a TLS 1.2+ connection whose
+// hostname and certificate have been verified. SMTP relay acceptance is not
+// proof that an end recipient's mailbox received the message.
 func (s *Sender) SendFailure(ctx context.Context, recipient, jobID string, notificationID int64) error {
 	if !validAddress(recipient) {
 		return errors.New("invalid email recipient")
@@ -184,19 +109,18 @@ func (s *Sender) SendFailure(ctx context.Context, recipient, jobID string, notif
 	if err := conn.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
 		return err
 	}
-	stopCancellation := make(chan struct{})
+	cancelWatchDone := make(chan struct{})
 	go func() {
 		select {
 		case <-ctx.Done():
 			_ = conn.Close()
-		case <-stopCancellation:
+		case <-cancelWatchDone:
 		}
 	}()
-	defer close(stopCancellation)
+	defer close(cancelWatchDone)
 
-	// This connection was established using tls.Dialer with certificate and
-	// hostname verification. Use only the required SMTP commands over this
-	// encrypted channel; never attempt plaintext fallback.
+	// Issue a minimal SMTP exchange on the already-encrypted connection.
+	// No plain TCP fallback or STARTTLS downgrade path exists.
 	smtpConn := textproto.NewConn(conn)
 	defer smtpConn.Close()
 	if _, _, err := smtpConn.ReadResponse(220); err != nil {
@@ -206,11 +130,10 @@ func (s *Sender) SendFailure(ctx context.Context, recipient, jobID string, notif
 		return err
 	}
 	if s.username != "" {
-		// PLAIN credentials are sent only inside the authenticated TLS tunnel.
-		authValue := base64.StdEncoding.EncodeToString(
+		token := base64.StdEncoding.EncodeToString(
 			[]byte("\x00" + s.username + "\x00" + s.password),
 		)
-		if err := smtpCommand(smtpConn, 235, "AUTH PLAIN %s", authValue); err != nil {
+		if err := smtpCommand(smtpConn, 235, "AUTH PLAIN %s", token); err != nil {
 			return fmt.Errorf("encrypted SMTP authentication failed: %w", err)
 		}
 	}
