@@ -13,7 +13,7 @@ RUN if [ "$FIAPX_COVERAGE" = "1" ]; then \
     fi
 
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates && addgroup -S fiapx && adduser -S -G fiapx fiapx
+RUN apk add --no-cache ca-certificates && addgroup -S -g 10001 fiapx && adduser -S -G fiapx -u 10001 fiapx
 COPY --from=build /out/api /usr/local/bin/api
 USER fiapx
 EXPOSE 8080

@@ -70,9 +70,12 @@ def merge(unit_path: pathlib.Path, integration_path: pathlib.Path, output: pathl
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        sys.exit("usage: merge-go-coverage.py UNIT.out INTEGRATION.out COMBINED.out")
+    # Fixed CI paths only; no untrusted command-line file locations.
     try:
-        merge(*(pathlib.Path(arg) for arg in sys.argv[1:]))
+        merge(
+            pathlib.Path("coverage/unit/coverage.out"),
+            pathlib.Path("coverage/integration.out"),
+            pathlib.Path("coverage/combined.out"),
+        )
     except (ValueError, OSError) as exc:
         sys.exit(f"coverage merge error: {exc}")
