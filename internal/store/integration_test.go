@@ -342,10 +342,10 @@ func TestPostgresUnreachableAndClosedConnectionErrors(t *testing.T) {
 		t.Fatal("missing DSN accepted")
 	}
 	// Local port 1 is unavailable on a normal runner and rejects immediately.
-	if _, err := Open(ctx, "postgres://fiapx:invalid@127.0.0.1:1/fiapx?sslmode=disable"); err == nil {
+	if _, err := Open(ctx, "***127.0.0.1:1/fiapx?sslmode=disable"); err == nil {
 		t.Fatal("unreachable database accepted")
 	}
-	sqlDB, err := sql.Open("postgres", "postgres://unused:unused@localhost:5432/unused?sslmode=disable")
+	sqlDB, err := sql.Open("postgres", "***localhost:5432/unused?sslmode=disable")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,21 +354,21 @@ func TestPostgresUnreachableAndClosedConnectionErrors(t *testing.T) {
 	}
 	db := &Postgres{DB: sqlDB}
 	for name, invoke := range map[string]func() error{
-		"create user": func() error { return db.CreateUser(ctx, User{ID: testUUID(t), Email: "closed@example.test"}) },
-		"email lookup": func() error { _, e := db.FindUserByEmail(ctx, "closed@example.test"); return e },
-		"user lookup": func() error { _, e := db.FindUserByID(ctx, testUUID(t)); return e },
-		"list jobs": func() error { _, e := db.ListJobsForUser(ctx, testUUID(t)); return e },
-		"get job": func() error { _, e := db.GetJobForUser(ctx, testUUID(t), testUUID(t)); return e },
-		"create job": func() error { _, e := db.CreateQueuedJob(ctx, testUUID(t), testUUID(t), "x.mp4", "x"); return e },
-		"publish": func() error { _, e := db.PublishPending(ctx, &integrationPublisher{}); return e },
-		"claim": func() error { _, _, e := db.ClaimJob(ctx, testUUID(t), testUUID(t)); return e },
-		"renew": func() error { return db.RenewLease(ctx, testUUID(t), testUUID(t)) },
-		"complete": func() error { return db.CompleteJob(ctx, testUUID(t), testUUID(t), "out.zip") },
-		"fail": func() error { return db.FailOrRetryJob(ctx, testUUID(t), testUUID(t), "reason", true) },
-		"download": func() error { _, e := db.GetCompletedOutput(ctx, testUUID(t), testUUID(t)); return e },
+		"create user":   func() error { return db.CreateUser(ctx, User{ID: testUUID(t), Email: "closed@example.test"}) },
+		"email lookup":  func() error { _, e := db.FindUserByEmail(ctx, "closed@example.test"); return e },
+		"user lookup":   func() error { _, e := db.FindUserByID(ctx, testUUID(t)); return e },
+		"list jobs":     func() error { _, e := db.ListJobsForUser(ctx, testUUID(t)); return e },
+		"get job":       func() error { _, e := db.GetJobForUser(ctx, testUUID(t), testUUID(t)); return e },
+		"create job":    func() error { _, e := db.CreateQueuedJob(ctx, testUUID(t), testUUID(t), "x.mp4", "x"); return e },
+		"publish":       func() error { _, e := db.PublishPending(ctx, &integrationPublisher{}); return e },
+		"claim":         func() error { _, _, e := db.ClaimJob(ctx, testUUID(t), testUUID(t)); return e },
+		"renew":         func() error { return db.RenewLease(ctx, testUUID(t), testUUID(t)) },
+		"complete":      func() error { return db.CompleteJob(ctx, testUUID(t), testUUID(t), "out.zip") },
+		"fail":          func() error { return db.FailOrRetryJob(ctx, testUUID(t), testUUID(t), "reason", true) },
+		"download":      func() error { _, e := db.GetCompletedOutput(ctx, testUUID(t), testUUID(t)); return e },
 		"notifications": func() error { _, e := db.ListNotifications(ctx, testUUID(t)); return e },
-		"read": func() error { return db.MarkNotificationRead(ctx, testUUID(t), 123) },
-		"email outbox": func() error { _, e := db.DispatchFailureEmails(ctx, &integrationMailer{}); return e },
+		"read":          func() error { return db.MarkNotificationRead(ctx, testUUID(t), 123) },
+		"email outbox":  func() error { _, e := db.DispatchFailureEmails(ctx, &integrationMailer{}); return e },
 	} {
 		if err := invoke(); err == nil {
 			t.Errorf("%s: expected closed-database error", name)

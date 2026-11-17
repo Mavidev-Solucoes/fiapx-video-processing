@@ -11,7 +11,7 @@
 | 5:00–6:30 | Mostrar erro: enviar `.mp4` inválido; conferir `failed`, aviso in-app e email capturado em Mailpit (localhost:8025) |
 | 6:30–8:00 | Explicar outbox transacional e testes E2E de broker offline/recuperação de lease; mostrar run de CI bem-sucedido |
 | 8:00–9:00 | Abrir Grafana (localhost:3000/d/fiapx-operations), mostrar status dos jobs, consumidores, fila e falhas; apontar regras de alerta no Prometheus |
-| 9:00–9:40 | Mostrar CI/CD aprovado, resumo de cobertura e artifact `go-coverage-report`, publicação GHCR e documentação; encerrar com links do GitHub |
+| 9:00–9:40 | Mostrar CI/CD aprovado, cobertura global ≥80% e artifact `go-coverage-combined`, publicação GHCR e documentação; encerrar com links do GitHub |
 
 ## Preparar o ambiente
 
@@ -27,6 +27,6 @@ Para provar recuperação de maneira determinística, prefira mostrar a execuç�
 ## Conferência de entrega
 
 - Repositório público ou acessível ao avaliador; README com todos os comandos.
-- Runs aprovados de **Go build/testes e cobertura**, **Docker** e **quatro E2E**, incluindo monitoramento. No job Go, confirmar o artifact `go-coverage-report`.
+- Runs aprovados de **Go build/testes e cobertura**, **Docker** e **quatro E2E**, incluindo monitoramento. Conferir o job `Enforce 80% combined Go coverage` e o artifact `go-coverage-combined` (cobertura unitária e E2E combinada).
 - Job `Publish verified API and worker images` na execução do CI do `main` correspondente à versão entregue: conferir o sucesso e as imagens no GHCR; não afirmar publicação concluída sem verificar o run.
 - Gravar vídeo de **até 10 minutos** e disponibilizar o link conforme o ambiente de submissão da FIAP.

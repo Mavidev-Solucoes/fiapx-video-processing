@@ -21,26 +21,9 @@ jobs:
           cache: false
       - name: Download module dependencies
         run: go mod download
-      - name: Capture Go formatting for final review
+      - name: gofmt
         run: |
-          for file in $(gofmt -l cmd internal); do
-            echo "__FILE_BEGIN__:$file"
-            gofmt "$file"
-            echo "__FILE_END__:$file"
-          done
-          gofmt -w cmd internal
           test -z "$(gofmt -l cmd internal)"
-      - name: Diagnose SonarCloud security issue (temporary)
-        run: |
-          curl -sSG --data-urlencode 'componentKeys=Mavidev-Solucoes_fiapx-video-processing' \
-            --data-urlencode 'pullRequest=10' --data-urlencode 'resolved=false' \
-            'https://sonarcloud.io/api/issues/search' -o /tmp/sonar-issues.json
-          python3 - <<'PY'
-          import json
-          d=json.load(open('/tmp/sonar-issues.json'))
-          for i in d.get('issues', []):
-              print({k:i.get(k) for k in ('rule','message','component','line','severity','type','impacts')})
-          PY
       - name: Check browser JavaScript syntax
         run: node --check internal/httpapi/ui/app.js
       - name: Build
@@ -238,6 +221,8 @@ jobs:
         with:
           name: go-coverage-email
           path: coverage/email
+      - name: Test coverage aggregation against duplicate and inconsistent blocks
+        run: python3 scripts/test-merge-go-coverage.py
       - name: Merge unit and real container execution coverage
         run: |
           go tool covdata textfmt -i=coverage/intake,coverage/processing,coverage/monitoring,coverage/email -o=coverage/integration.out
