@@ -1,0 +1,11 @@
+FROM golang:1.23-alpine AS build
+WORKDIR /src
+COPY go.mod ./
+COPY cmd ./cmd
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/worker ./cmd/worker
+
+FROM alpine:3.21
+RUN apk add --no-cache ffmpeg && addgroup -S fiapx && adduser -S -G fiapx fiapx
+COPY --from=build /out/worker /usr/local/bin/worker
+USER fiapx
+ENTRYPOINT ["/usr/local/bin/worker"]
