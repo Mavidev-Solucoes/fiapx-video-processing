@@ -27,9 +27,19 @@ done
 if [[ $ready != 1 ]]; then echo "Monitoring services did not become ready"; exit 1; fi
 
 echo "== Verify provisioned dashboard =="
-curl -fsS -u admin:fiapx-monitoring-local \
-  http://127.0.0.1:3000/api/dashboards/uid/fiapx-operations |
-  python3 -c 'import json,sys; d=json.load(sys.stdin)["dashboard"]; assert d["uid"]=="fiapx-operations"; assert len(d["panels"])>=10'
+# Grafana's /api/health becomes ready before dashboard file provisioning
+# necessarily completes. Wait for the specific dashboard, not only Grafana.
+dashboard_ready=0
+for i in $(seq 1 40); do
+  if curl -fsS -u admin:fiapx-monitoring-local \
+    http://127.0.0.1:3000/api/dashboards/uid/fiapx-operations 2>/dev/null |
+    python3 -c 'import json,sys; d=json.load(sys.stdin)["dashboard"]; assert d["uid"]=="fiapx-operations"; assert len(d["panels"])>=10' 2>/dev/null; then
+    dashboard_ready=1
+    break
+  fi
+  sleep 2
+done
+if [[ $dashboard_ready != 1 ]]; then echo "Grafana dashboard did not provision"; exit 1; fi
 echo "Grafana dashboard is provisioned"
 
 query_metric() {
