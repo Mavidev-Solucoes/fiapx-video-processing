@@ -10,10 +10,7 @@ services:
       sh -ec '
       apk add --no-cache openssl >/dev/null;
       if [ ! -s /certs/cert.pem ]; then
-        openssl req -x509 -newkey rsa:2048 -nodes
-          -keyout /certs/key.pem -out /certs/cert.pem
-          -sha256 -days 365 -subj "/CN=mailpit"
-          -addext "subjectAltName=DNS:mailpit";
+        openssl req -x509 -newkey rsa:2048 -nodes -keyout /certs/key.pem -out /certs/cert.pem -sha256 -days 365 -subj "/CN=mailpit" -addext "subjectAltName=DNS:mailpit";
       fi;
       cp /certs/cert.pem /ca/cert.pem;
       chmod 600 /certs/key.pem;
