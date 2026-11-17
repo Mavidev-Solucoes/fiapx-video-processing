@@ -110,7 +110,7 @@ func (s *Sender) SendFailure(ctx context.Context, recipient, jobID string, notif
 		if err != nil {
 			return fmt.Errorf("SMTP TLS negotiation failure: %w", err)
 		}
-	} else if !s.allowPlainLocal {
+	} else {
 		return errors.New("SMTP server does not support required STARTTLS")
 	}
 	if s.username != "" {
