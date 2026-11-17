@@ -26,10 +26,10 @@ Worker(s) Go / FFmpeg -----> MinIO (ZIP final)
 
 ## Responsabilidades
 
-- **API:** criar usuários e sessões, autorizar acesso somente aos próprios jobs, receber uploads com limite de tamanho, persistir um job e seu arquivo, enfileirar trabalho, consultar status e servir downloads autorizados. Registro, login, perfil, consultas restritas, upload e publicação recuperável foram implementados; o download e o consumidor de jobs ainda serão implementados.
+- **API:** criar usuários e sessões, autorizar acesso somente aos próprios jobs, receber uploads com limite de tamanho, persistir um job e seu arquivo, enfileirar trabalho, consultar status e servir downloads autorizados. Registro, login, perfil, consultas restritas, upload e publicação recuperável foram implementados; download e consumo de jobs foram implementados.
 - **Worker:** receber um ID de job (não o arquivo inteiro), recuperar o vídeo do MinIO, executar FFmpeg e criar ZIP, enviar o ZIP ao MinIO e atualizar o estado no PostgreSQL. Vários workers poderão consumir em paralelo.
 - **PostgreSQL:** fonte de verdade dos jobs aceitos. A tabela `video_jobs` inclui ID, usuário proprietário, status, chaves de objetos e tentativas.
-- **RabbitMQ:** separa o recebimento de vídeos do processamento intensivo em CPU. A API usa fila durável, mensagens persistentes, publisher confirms e outbox relacional. ACK após processar, retries de consumo e DLQ serão definidos com o worker no PR #4.
+- **RabbitMQ:** separa o recebimento de vídeos do processamento intensivo em CPU. A API usa fila durável, mensagens persistentes, publisher confirms e outbox relacional. ACK manual após persistir o estado terminal, reentrega em erros transitórios e até três tentativas; revisão de DLQ no PR #5.
 - **MinIO:** dados binários fora do banco relacional e do filesystem efêmero das aplicações.
 
 ## Estados do job
@@ -38,7 +38,7 @@ Worker(s) Go / FFmpeg -----> MinIO (ZIP final)
 
 ## Recuperação de picos — requisito essencial
 
-**Não considerar o requisito atendido nesta fundação.** Precisamos garantir que um trabalho aceito não se perca na falha entre registrar o job no PostgreSQL e publicá-lo no RabbitMQ. Para isso, a implementação deverá adotar um mecanismo de recuperação dos jobs `queued` que ainda não foram entregues (por exemplo, outbox transacional ou reconciliador) e consumidores idempotentes que suportem mensagens repetidas. O número de workers controla a concorrência. **No PR #3, a API recebe e armazena vídeos, grava job + outbox atomicamente e publica de forma recuperável no RabbitMQ. O worker ainda não consome a fila.**
+**Não considerar o requisito atendido nesta fundação.** Precisamos garantir que um trabalho aceito não se perca na falha entre registrar o job no PostgreSQL e publicá-lo no RabbitMQ. Para isso, a implementação deverá adotar um mecanismo de recuperação dos jobs `queued` que ainda não foram entregues (por exemplo, outbox transacional ou reconciliador) e consumidores idempotentes que suportem mensagens repetidas. O número de workers controla a concorrência. **No PR #3, a API recebe e armazena vídeos, grava job + outbox atomicamente e publica de forma recuperável no RabbitMQ. O worker consome e atualiza a situação de cada job.**
 
 ## Origem do processamento
 
@@ -69,3 +69,11 @@ Esta entrega não demonstra ainda upload, concorrência ou recuperação de pedi
 5. Em falha temporária de broker ou após reinício da API, o outbox não publicado é reenviado. Eventuais entregas repetidas devem ser tratadas com idempotência pelo consumidor (PR #4).
 
 O job é aceito (HTTP 202) **somente depois** do commit PostgreSQL. Um erro de SQL após gravar o objeto pode deixar um arquivo órfão no MinIO, que deverá ser removido por uma rotina de manutenção futura; não implica perda de job aceito.
+
+## Execução distribuída (PR #4)
+
+O consumidor utiliza `prefetch=1` e `manual ACK`. O comando transporta somente o ID do job. O banco concede `lease_token` para apenas um worker, renovado por heartbeat a cada 20s; após interrupção e expiração, outra entrega pode recuperar o processamento. A finalização confere o token para impedir que um worker antigo altere estados depois de perder a lease.
+
+FFmpeg extrai quadros a 1 FPS e o worker grava o ZIP no MinIO antes de marcar `completed`. Vídeos inválidos são marcados `failed`; falhas transitórias são reenfileiradas até três tentativas. O download exige JWT e consulta filtrada por `user_id` no PostgreSQL antes de ler qualquer objeto.
+
+O `schema-migrate` aplica `003_worker_leases.sql` também a volumes de PostgreSQL já existentes.

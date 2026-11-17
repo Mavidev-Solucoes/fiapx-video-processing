@@ -2,7 +2,7 @@
 
 Projeto do Hackathon FIAP X. O objetivo é receber vídeos de usuários autenticados, processá-los em paralelo, gerar um ZIP com imagens extraídas, permitir download e acompanhar os estados dos trabalhos, sem perder solicitações aceitas em picos de demanda.
 
-> **Estado: implementação incremental (PR #3).** Registro/login e leitura de jobs por usuário estão implementados. Agora a API recebe um vídeo autenticado, armazena no MinIO e registra o job + mensagem pendente em uma transação PostgreSQL. Um dispatcher publica a mensagem com confirmação no RabbitMQ; o worker, processamento/ZIP, download e notificações ainda serão implementados no PR seguinte.
+> **Estado: fluxo funcional de vídeo (PR #4).** A API autentica e recebe vídeos, o outbox publica jobs duráveis, e workers independentes consomem RabbitMQ, extraem frames via FFmpeg, geram ZIP, atualizam o estado e permitem download privado. Notificações de falha e documentação final de entrega continuam no PR #5.
 
 ## Componentes previstos
 
@@ -19,7 +19,7 @@ API e worker são aplicações distintas no mesmo repositório. O código fornec
 
 ```text
 cmd/api/                 servidor HTTP (autenticação e consultas de jobs)
-cmd/worker/              processo separado (consumo de fila pendente)
+cmd/worker/              processo independente (consumer RabbitMQ + FFmpeg)
 internal/auth/           bcrypt + tokens HMAC-SHA256 e testes
 internal/httpapi/        rotas REST, autorização e testes de handlers
 internal/store/          persistência PostgreSQL (usuários + jobs)
@@ -62,6 +62,7 @@ A API utiliza **hash bcrypt** para as senhas (12–72 bytes) e **Bearer JWT HS25
 | `GET /api/jobs` | Sim | Lista até 100 jobs pertencentes ao usuário |
 | `POST /api/jobs` | Sim | Upload multipart (`video`) e aceitação assíncrona (HTTP 202) |
 | `GET /api/jobs/{id}` | Sim | Detalhe do job pertencente ao usuário; 404 para jobs de terceiros |
+| `GET /api/jobs/{id}/download` | Sim | ZIP privado quando completed; 409 enquanto pendente |
 | `GET /health/live` | Não | Liveness da API |
 
 Exemplo de teste manual após `docker compose up --build -d`:
@@ -74,7 +75,7 @@ curl -X POST http://localhost:8080/api/auth/register \
 
 O resultado inclui `accessToken`. Envie o valor no cabeçalho `Authorization: Bearer <accessToken>` para acessar `/api/me` e `/api/jobs`. A lista retorna os vídeos já enviados pelo usuário, inicialmente com estado `queued` até a implementação do worker.
 
-**Limitações atuais:** o upload e o despacho durável dos jobs estão implementados, mas os vídeos continuam com status `queued` até a implementação do worker. Ainda não há ZIP, download ou notificação.
+**Situação atual:** processamento por worker, ZIP e download privado implementados. A notificação de erros e as evidências finais ficam para o PR #5.
 
 ## Testes e CI
 
@@ -92,7 +93,7 @@ O workflow de GitHub Actions executa build, vet, testes/race e valida os Dockerf
 
 1. **Concluído neste PR:** registro/login, token assinado, autorização e leitura de jobs por usuário.
 2. **Concluído neste PR:** upload com tamanho limitado, persistência no MinIO e publicação recuperável pelo outbox PostgreSQL/RabbitMQ.
-3. Worker funcional, retries, atualização persistente de status, armazenamento do ZIP, downloads autorizados e notificações de falha.
+3. **Concluído neste PR:** worker funcional, retries limitados, status persistidos, ZIP e downloads autorizados. **Notificações pendentes**.
 4. Testes de concorrência/picos, integração, documentação final e demonstração de até 10 minutos.
 
 Confira [decisões de arquitetura](docs/architecture.md) e [matriz de requisitos](docs/requirements.md).
@@ -113,4 +114,20 @@ curl -i -X POST http://localhost:8080/api/jobs \
   -F 'video=@./exemplo.mp4'
 ```
 
-**Escopo atual:** o arquivo e o job são persistidos e a mensagem é enfileirada, mas ainda não há consumidor para concluir o processamento. Não use `docker compose down -v` se quiser manter os dados locais.
+**Escopo atual:** o worker consome jobs, gera ZIP e registra completed/failed, com retries e idempotência. Não use `docker compose down -v` se quiser preservar dados locais. Não use `docker compose down -v` se quiser manter os dados locais.
+
+## Worker, ZIP e download (PR #4)
+
+O worker utiliza RabbitMQ com ACK manual e prefetch 1, permitindo paralelismo com o comando `docker compose up -d --build --scale worker=2`. Cada job é adquirido por atualização condicional no PostgreSQL: `queued → processing → completed/failed`. Uma `lease_token` (UUID) com prazo de validade impede execução simultânea de mensagens duplicadas. Durante a execução, o worker renova a lease a cada 20 segundos. Após um crash, a lease expira e permite retomar o job com outra entrega do RabbitMQ.
+
+O vídeo é baixado do MinIO, processado por FFmpeg com `fps=1` (projeto-base), compactado como `frames.zip` e enviado ao MinIO. O PostgreSQL recebe a chave final somente após o arquivo ter sido persistido. Mensagens são confirmadas ao RabbitMQ somente depois do estado terminal. Falhas transitórias são reenfileiradas com até três tentativas; vídeos incompatíveis passam diretamente a `failed`.
+
+O endpoint `GET /api/jobs/{id}/download` responde com `application/zip` apenas quando o token pertence ao usuário dono do job e o estado é `completed`. Jobs pendentes recebem HTTP 409; acesso a trabalhos de terceiros recebe 404.
+
+### Como comprovar
+
+- `go test -race ./...`: testes de auth, upload, FFmpeg/ZIP, workflow e proteção do download.
+- `bash scripts/smoke-intake.sh`: aceitação durante interrupção de RabbitMQ e recuperação do outbox.
+- `bash scripts/smoke-processing.sh`: duas réplicas de worker, upload de vídeos reais gerados pelo FFmpeg, ZIP com PNGs, isolamento entre usuários, supressão de duplicidades e erro de mídia inválida.
+
+**Ainda pendente:** notificação de falhas ao usuário, revisão de resiliência e apresentação final (PR #5).
