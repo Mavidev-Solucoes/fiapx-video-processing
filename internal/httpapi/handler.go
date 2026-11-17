@@ -20,6 +20,7 @@ type API struct {
 	jobs     store.Jobs
 	tokens   *auth.Tokens
 	uploader Uploader
+	downloader Downloader
 }
 
 type credentials struct {
@@ -28,7 +29,15 @@ type credentials struct {
 }
 
 func New(users store.Users, jobs store.Jobs, tokens *auth.Tokens, uploads ...Uploader) http.Handler {
-	a := &API{users: users, jobs: jobs, tokens: tokens}
+	return newHandler(users, jobs, tokens, nil, uploads...)
+}
+
+func NewWithDownload(users store.Users, jobs store.Jobs, tokens *auth.Tokens, uploader Uploader, downloader Downloader) http.Handler {
+	return newHandler(users, jobs, tokens, downloader, uploader)
+}
+
+func newHandler(users store.Users, jobs store.Jobs, tokens *auth.Tokens, downloader Downloader, uploads ...Uploader) http.Handler {
+	a := &API{users: users, jobs: jobs, tokens: tokens, downloader: downloader}
 	if len(uploads) > 0 {
 		a.uploader = uploads[0]
 	}
@@ -42,6 +51,7 @@ func New(users store.Users, jobs store.Jobs, tokens *auth.Tokens, uploads ...Upl
 	mux.HandleFunc("GET /api/jobs", a.protected(a.listJobs))
 	mux.HandleFunc("POST /api/jobs", a.protected(a.uploadJob))
 	mux.HandleFunc("GET /api/jobs/{id}", a.protected(a.getJob))
+	mux.HandleFunc("GET /api/jobs/{id}/download", a.protected(a.downloadJob))
 	return mux
 }
 
