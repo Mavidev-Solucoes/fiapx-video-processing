@@ -12,8 +12,8 @@ Base: enunciado `POSTECH - SOAT - Fase 5 - Hacka.pdf`, páginas 3–4. Esta matr
 | Banco de dados e persistência | PostgreSQL com migrations, volumes; armazenamento privado S3 | `migrations/`, `docker-compose.yml` |
 | Arquitetura escalável | API/worker separados, escaláveis por `--scale worker=N` | `cmd/api`, `cmd/worker`, scripts |
 | Versionamento GitHub | Repositório com commits e PRs isolados | Histórico do GitHub |
-| Testes e automação | Go race tests, build, vet, Docker Compose, quatro testes E2E | `.github/workflows/ci.yml` |
-| CI/CD | Validação em PR e imagens GHCR após CI verde no main; deploy Compose reproduzível | `.github/workflows/ci.yml` (job `publish`), `scripts/deploy-release.sh` |
+| Testes e automação | Go race tests com relatório de cobertura, build, vet, Docker Compose e quatro testes E2E | `.github/workflows/ci.yml`; artifact `go-coverage-report` |
+| CI/CD | Validação em PR, relatório de cobertura e imagens GHCR após CI verde em `main`; deploy Compose reproduzível | `.github/workflows/ci.yml` (jobs `go` e `publish`), `scripts/deploy-release.sh` |
 | Monitoramento (stack recomendada) | Prometheus + Grafana, métricas dos jobs e RabbitMQ, regras de alerta | `observability/`, `smoke-monitoring.sh`, dashboard provisionado |
 | Documentação de arquitetura | Diagrama, decisões, fluxos e limitações | `docs/architecture.md` |
 | Scripts de criação de recursos | Compose, migrations e scripts de deployment | `docker-compose.yml`, `migrations/`, `scripts/` |
