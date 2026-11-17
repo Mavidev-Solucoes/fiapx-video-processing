@@ -42,3 +42,12 @@ jobs:
         run: docker build -f deploy/Dockerfile.api -t fiapx-api:ci .
       - name: Build worker image
         run: docker build -f deploy/Dockerfile.worker -t fiapx-worker:ci .
+
+  intake:
+    name: Integration smoke - durable video intake
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Compose upload and broker-recovery smoke test
+        run: bash scripts/smoke-intake.sh
