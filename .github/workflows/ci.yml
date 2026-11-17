@@ -51,8 +51,6 @@ jobs:
             coverage-summary.txt
           if-no-files-found: error
           retention-days: 30
-      - name: Enforce minimum 80% Go statement coverage
-        run: bash scripts/check-coverage.sh coverage-summary.txt
 
   containers:
     name: Docker and Compose validation
@@ -72,41 +70,151 @@ jobs:
     name: Integration smoke - durable video intake
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      FIAPX_COVERAGE_DIR: ${{ runner.temp }}/fiapx-coverage-intake
+      COMPOSE_FILE: docker-compose.yml:docker-compose.coverage.yml
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare writable Go coverage directory
+        run: mkdir -p "$FIAPX_COVERAGE_DIR" && chmod 0777 "$FIAPX_COVERAGE_DIR"
       - name: Run Compose upload and broker-recovery smoke test
         run: bash scripts/smoke-intake.sh
+
+      - name: Upload Go integration coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage-intake
+          path: ${{ runner.temp }}/fiapx-coverage-intake/cov*
+          if-no-files-found: error
+          retention-days: 30
 
   processing:
     name: E2E - FFmpeg, ZIP and user isolation
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      FIAPX_COVERAGE_DIR: ${{ runner.temp }}/fiapx-coverage-processing
+      COMPOSE_FILE: docker-compose.yml:docker-compose.coverage.yml
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare writable Go coverage directory
+        run: mkdir -p "$FIAPX_COVERAGE_DIR" && chmod 0777 "$FIAPX_COVERAGE_DIR"
       - name: Run two-worker processing and download smoke test
         run: bash scripts/smoke-processing.sh
+
+      - name: Upload Go integration coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage-processing
+          path: ${{ runner.temp }}/fiapx-coverage-processing/cov*
+          if-no-files-found: error
+          retention-days: 30
 
   monitoring:
     name: Integration smoke - monitoring stack
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      FIAPX_COVERAGE_DIR: ${{ runner.temp }}/fiapx-coverage-monitoring
+      COMPOSE_FILE: docker-compose.yml:docker-compose.coverage.yml
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare writable Go coverage directory
+        run: mkdir -p "$FIAPX_COVERAGE_DIR" && chmod 0777 "$FIAPX_COVERAGE_DIR"
       - name: Validate Grafana dashboard, Prometheus scrapes and job metrics
         run: bash scripts/smoke-monitoring.sh
+
+      - name: Upload Go integration coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage-monitoring
+          path: ${{ runner.temp }}/fiapx-coverage-monitoring/cov*
+          if-no-files-found: error
+          retention-days: 30
 
   email:
     name: E2E - SMTP failure email delivery
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      FIAPX_COVERAGE_DIR: ${{ runner.temp }}/fiapx-coverage-email
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare writable Go coverage directory
+        run: mkdir -p "$FIAPX_COVERAGE_DIR" && chmod 0777 "$FIAPX_COVERAGE_DIR"
       - name: Verify Mailpit delivery and outage recovery
         run: bash scripts/smoke-email.sh
 
+      - name: Upload Go integration coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage-email
+          path: ${{ runner.temp }}/fiapx-coverage-email/cov*
+          if-no-files-found: error
+          retention-days: 30
+
+
+  coverage:
+    name: Enforce 80% combined Go coverage
+    needs: [go, intake, processing, monitoring, email]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: go-coverage-report
+          path: coverage/unit
+      - uses: actions/download-artifact@v4
+        with:
+          name: go-coverage-intake
+          path: coverage/intake
+      - uses: actions/download-artifact@v4
+        with:
+          name: go-coverage-processing
+          path: coverage/processing
+      - uses: actions/download-artifact@v4
+        with:
+          name: go-coverage-monitoring
+          path: coverage/monitoring
+      - uses: actions/download-artifact@v4
+        with:
+          name: go-coverage-email
+          path: coverage/email
+      - name: Merge unit and real container execution coverage
+        run: |
+          go tool covdata textfmt -i=coverage/intake,coverage/processing,coverage/monitoring,coverage/email -o=coverage/integration.out
+          python3 scripts/merge-go-coverage.py coverage/unit/coverage.out coverage/integration.out coverage/combined.out
+          go tool cover -func=coverage/combined.out | tee coverage/combined-summary.txt
+          {
+            echo '### Go coverage (unit tests + real container execution)'
+            echo '```text'
+            tail -n 1 coverage/combined-summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload aggregate coverage evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage-combined
+          path: |
+            coverage/combined.out
+            coverage/combined-summary.txt
+            coverage/integration.out
+          if-no-files-found: error
+          retention-days: 30
+      - name: Enforce minimum 80% Go statement coverage
+        run: bash scripts/check-coverage.sh coverage/combined-summary.txt
+
   publish:
     name: Publish verified API and worker images
-    needs: [go, containers, intake, processing, monitoring, email]
+    needs: [go, containers, intake, processing, monitoring, email, coverage]
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     permissions:
