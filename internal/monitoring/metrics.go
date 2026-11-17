@@ -12,14 +12,14 @@ import (
 // Snapshot contains aggregate operational information only. It never exposes
 // user IDs, video names, credentials, or object storage paths.
 type Snapshot struct {
-	Queued                int64
-	Processing            int64
-	Completed             int64
-	Failed                int64
-	OutboxPending         int64
-	UnreadNotifications   int64
-	Attempts              int64
-	OldestQueuedSeconds   float64
+	Queued                  int64
+	Processing              int64
+	Completed               int64
+	Failed                  int64
+	OutboxPending           int64
+	UnreadNotifications     int64
+	Attempts                int64
+	OldestQueuedSeconds     float64
 	OldestProcessingSeconds float64
 }
 

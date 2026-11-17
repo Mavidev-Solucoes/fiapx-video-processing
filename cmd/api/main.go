@@ -54,8 +54,8 @@ func main() {
 		metricsAddr = ":9091"
 	}
 	metricsServer := &http.Server{
-		Addr: metricsAddr,
-		Handler: monitoring.Handler(monitoring.Postgres{DB: database.DB}),
+		Addr:              metricsAddr,
+		Handler:           monitoring.Handler(monitoring.Postgres{DB: database.DB}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {
