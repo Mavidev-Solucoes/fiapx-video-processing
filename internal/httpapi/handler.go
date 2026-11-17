@@ -47,6 +47,9 @@ func newHandler(users store.Users, jobs store.Jobs, tokens *auth.Tokens, downloa
 		a.uploader = uploads[0]
 	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", serveHome)
+	mux.HandleFunc("GET /app.js", serveApplicationJS)
+	mux.HandleFunc("GET /style.css", serveStyles)
 	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"service": "fiapx-api", "status": "alive"})
 	})

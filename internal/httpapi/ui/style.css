@@ -1,0 +1,18 @@
+:root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#182130;background:#f4f6fa}
+*{box-sizing:border-box}body{margin:0;line-height:1.5}.shell{max-width:1050px;margin:0 auto;padding:0 22px}
+.top{background:#142137;color:#fff;padding:30px 0 42px}.head{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.eyebrow{font-size:12px;letter-spacing:.14em;font-weight:700;color:#a9d3fc}h1{font-size:clamp(26px,4vw,40px);margin:6px 0}
+h2{font-size:19px;margin:0 0 13px}.top p{margin:0;color:#c6d0e0}.userbar{display:flex;gap:12px;align-items:center}
+main{padding-top:26px!important}.panel{background:white;border:1px solid #dce3ec;border-radius:12px;box-shadow:0 3px 12px #16243a0b;padding:25px;margin-bottom:22px}
+.panel.auth{max-width:500px;margin:25px auto 45px}.hint{color:#647387;font-size:13px;margin:5px 0 18px}label{display:block;font-size:13px;font-weight:650;margin:12px 0 6px}
+input{border:1px solid #b6c2d2;border-radius:7px;padding:11px 13px;font:inherit;width:100%;background:white}
+input[type=file]{border-style:dashed}.actions{display:flex;gap:10px;margin-top:20px}
+button{background:#1560bf;color:white;border:1px solid #1560bf;border-radius:8px;font:inherit;font-size:14px;font-weight:650;padding:10px 14px;cursor:pointer}
+button:hover{filter:brightness(.94)}button:disabled{opacity:.5;cursor:wait}.outline{color:#1560bf;background:white}.ghost{background:transparent;border:1px solid #b5c3d4;color:inherit}
+.top .ghost{color:white;border-color:#8c9ab0}.two-cols{display:grid;grid-template-columns:1fr 1fr;gap:20px}.section-header{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.items{padding:0;margin:0;list-style:none}.items li{border-top:1px solid #e6eaf0;padding:13px 0;overflow-wrap:anywhere}
+.titleline{font-weight:650}.meta{font-size:12px;color:#65748a;margin:4px 0}.error{color:#a01b2a}.ok{color:#146e46}.wait{color:#805a09}
+.item-buttons{display:flex;gap:8px;margin-top:10px}.item-buttons button{padding:6px 10px;font-size:12px}.message{min-height:20px;color:#146e46;font-size:14px}
+.message.problem{color:#a01b2a}.count{font-size:13px;color:#a01b2a}.unread{background:#fff7f3;margin:0 -10px;padding:13px 10px!important;border-radius:6px}
+footer{padding:5px 22px 30px!important;color:#798597}
+[hidden]{display:none!important}@media(max-width:710px){.two-cols{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column}.panel{padding:18px}}
