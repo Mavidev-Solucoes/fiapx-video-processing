@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      FIAPX_COVERAGE_DIR: ${{ runner.temp }}/fiapx-coverage-intake
+      FIAPX_COVERAGE_DIR: /tmp/fiapx-coverage-intake
       COMPOSE_FILE: docker-compose.yml:docker-compose.coverage.yml
     steps:
       - uses: actions/checkout@v4
@@ -85,7 +85,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: go-coverage-intake
-          path: ${{ runner.temp }}/fiapx-coverage-intake/cov*
+          path: /tmp/fiapx-coverage-intake/cov*
           if-no-files-found: error
           retention-days: 30
 
@@ -94,7 +94,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      FIAPX_COVERAGE_DIR: ${{ runner.temp }}/fiapx-coverage-processing
+      FIAPX_COVERAGE_DIR: /tmp/fiapx-coverage-processing
       COMPOSE_FILE: docker-compose.yml:docker-compose.coverage.yml
     steps:
       - uses: actions/checkout@v4
@@ -108,7 +108,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: go-coverage-processing
-          path: ${{ runner.temp }}/fiapx-coverage-processing/cov*
+          path: /tmp/fiapx-coverage-processing/cov*
           if-no-files-found: error
           retention-days: 30
 
@@ -117,7 +117,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      FIAPX_COVERAGE_DIR: ${{ runner.temp }}/fiapx-coverage-monitoring
+      FIAPX_COVERAGE_DIR: /tmp/fiapx-coverage-monitoring
       COMPOSE_FILE: docker-compose.yml:docker-compose.coverage.yml
     steps:
       - uses: actions/checkout@v4
@@ -131,7 +131,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: go-coverage-monitoring
-          path: ${{ runner.temp }}/fiapx-coverage-monitoring/cov*
+          path: /tmp/fiapx-coverage-monitoring/cov*
           if-no-files-found: error
           retention-days: 30
 
@@ -140,7 +140,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      FIAPX_COVERAGE_DIR: ${{ runner.temp }}/fiapx-coverage-email
+      FIAPX_COVERAGE_DIR: /tmp/fiapx-coverage-email
     steps:
       - uses: actions/checkout@v4
       - name: Prepare writable Go coverage directory
@@ -153,7 +153,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: go-coverage-email
-          path: ${{ runner.temp }}/fiapx-coverage-email/cov*
+          path: /tmp/fiapx-coverage-email/cov*
           if-no-files-found: error
           retention-days: 30
 
