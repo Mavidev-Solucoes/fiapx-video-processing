@@ -82,3 +82,15 @@ jobs:
         run: |
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io \
             --username "$GITHUB_ACTOR" --password-stdin
+      - name: Build and publish API image
+        run: |
+          image=ghcr.io/mavidev-solucoes/fiapx-video-processing-api
+          docker build -f deploy/Dockerfile.api -t "$image:latest" -t "$image:$GITHUB_SHA" .
+          docker push "$image:$GITHUB_SHA"
+          docker push "$image:latest"
+      - name: Build and publish worker image
+        run: |
+          image=ghcr.io/mavidev-solucoes/fiapx-video-processing-worker
+          docker build -f deploy/Dockerfile.worker -t "$image:latest" -t "$image:$GITHUB_SHA" .
+          docker push "$image:$GITHUB_SHA"
+          docker push "$image:latest"
