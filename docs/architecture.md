@@ -25,7 +25,7 @@ flowchart TD
 
 **Worker (Go + FFmpeg):** consome RabbitMQ, obtém vídeo privado, extrai PNGs (`fps=1`), cria ZIP, grava o resultado, atualiza estado e tenta novamente quando a infraestrutura falha. Workers são executáveis separados e podem ser escalados com Docker Compose.
 
-**PostgreSQL:** transações locais e integridade dos usuários, trabalhos, outbox e notificações. A mesma transação que marca uma falha terminal persiste o aviso do usuário. O estado não depende de memória do processo.
+**PostgreSQL:** transações locais e integridade dos usuários, trabalhos, outbox e notificações. A mesma transação que marca uma falha terminal persiste o aviso do usuário e a intenção de entrega de e-mail. O estado não depende de memória do processo.
 
 **RabbitMQ:** isolamento entre upload e execução e tolerância a picos. Fila durável, mensagens persistentes, confirmação de publicação e ACK somente após gravar o resultado no banco. `prefetch=1` limita a um job por consumidor.
 
@@ -44,7 +44,7 @@ flowchart TD
 
 Na falha terminal, o worker persiste **status `failed` + notificação in-app + intenção de e-mail** na mesma transação PostgreSQL. A tabela `notification_email_outbox` tem chave única para `notification_id`; um dispatcher assíncrono na API consulta lotes com `FOR UPDATE SKIP LOCKED`, envia ao SMTP e grava confirmação do relay. Falhas geram tentativas limitadas com backoff, sem interromper uploads/processamento.
 
-O overlay Compose `docker-compose.mail.yml` oferece Mailpit para demonstração em `http://localhost:8025/`, com SMTP com TLS implícito e certificado de demonstração confiável somente dentro do Compose. Para um relay real, `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM` e eventuais credenciais são configurados fora do Git; STARTTLS é obrigatório. Sem SMTP, os avisos in-app continuam disponíveis e os emails ficam pendentes até configuração.
+O overlay Compose `docker-compose.mail.yml` oferece Mailpit para demonstração em `http://localhost:8025/`, com SMTP com TLS implícito e certificado de demonstração confiável somente dentro do Compose. Para um relay real, `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM` e eventuais credenciais são configurados fora do Git; **TLS implícito com validação de certificado e hostname é obrigatório** (porta padrão 465, sem fallback para STARTTLS). Sem SMTP, os avisos in-app continuam disponíveis e os emails ficam pendentes até configuração.
 
 A garantia é de **pelo menos uma entrega ao relay**; o cliente final pode não receber (rejeição, spam ou bounce) e há risco de duplicidade após uma falha entre confirmação SMTP e commit. A verificação de propriedade dos endereços de email não foi implementada nesta entrega de demonstração.
 
@@ -64,16 +64,16 @@ O projeto inclui um perfil opcional `monitoring` com **Prometheus** (coleta de m
 
 **Docker Compose em vez de Kubernetes:** permitido para a entrega, suficiente para demonstrar duas réplicas de worker, picos e recuperação. Adotar Kubernetes acrescentaria complexidade operacional sem necessidade explícita.
 
-**Notificações dentro da aplicação:** alternativa simples e verificável ao envio de e-mail. A API fornece `GET /api/notifications` e confirmação de leitura por usuário; o navegador consulta periodicamente e apresenta um alerta quando um processamento falha.
+**Notificações in-app e por e-mail:** o aviso privado é persistido junto com a falha. A API oferece `GET /api/notifications` e confirmação de leitura, enquanto o outbox de e-mail permite envio SMTP assíncrono e recuperável. O Mailpit comprova a entrega ao relay sem exigir uma conta externa.
 
-**Limites conhecidos:** os alertas não enviam notificações externas; os agregados não substituem tracing distribuído nem logs centralizados. Volumes Docker locais não substituem backup/alta disponibilidade; um upload persistido cujo commit no PostgreSQL falha pode deixar objeto órfão; a estratégia de retry é simples, sem DLQ separada; não há e-mail externo nem deploy remoto automático. Essas decisões reduzem escopo sem esconder as limitações.
+**Limites conhecidos:** os **alertas operacionais do Prometheus** não enviam notificações externas, pois não há Alertmanager configurado; isso é distinto dos **e-mails de falha dos vídeos**, enviados por SMTP opcional (Mailpit na demo). As métricas não substituem tracing distribuído nem logs centralizados. Volumes Docker locais não substituem backup/alta disponibilidade; um upload persistido cujo commit no PostgreSQL falha pode deixar objeto órfão; o retry de vídeo não possui DLQ dedicada; não há deploy remoto automático. Essas decisões reduzem escopo sem esconder as limitações.
 
 ## Evidências automatizadas
 
 - `scripts/smoke-intake.sh`: aceita upload mesmo após parar RabbitMQ e demonstra reenfileiramento.
 - `scripts/smoke-email.sh`: verifica email capturado pelo Mailpit, falha do servidor SMTP e reenvio após recuperação.
 - `scripts/smoke-processing.sh`: processa dois vídeos reais com workers paralelos, confere ZIP, acesso por usuário, duplicidade e falha terminal, consulta notificação privada, confirma leitura e recupera uma lease simulada como expirada.
-- `.github/workflows/ci.yml`: executa testes, os três E2E e valida que Prometheus/Grafana capturam métricas reais.
+- `.github/workflows/ci.yml`: executa testes Go com race detector e perfil de cobertura (`coverage.out` e `coverage-summary.txt` como artifact), quatro E2E (intake, processamento, monitoramento, e-mail), e valida que Prometheus/Grafana capturam métricas reais.
 - `.github/workflows/ci.yml`: o job `publish` publica imagens no GHCR somente após todos os jobs de validação concluírem com sucesso, em um `push` para `main`; o token com escrita em pacotes é limitado a esse job.
 
 Veja [matriz de requisitos](requirements.md) e [roteiro de demonstração](demo.md).

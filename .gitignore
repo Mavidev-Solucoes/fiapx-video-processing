@@ -6,6 +6,7 @@
 bin/
 dist/
 coverage.out
+coverage-summary.txt
 *.test
 # Local uploads and outputs
 uploads/
