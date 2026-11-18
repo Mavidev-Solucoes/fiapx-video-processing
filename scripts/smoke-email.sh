@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
-dc() { docker compose -f docker-compose.yml -f docker-compose.mail.yml "$@"; }
+dc() {
+  if [[ -n "${FIAPX_COVERAGE_DIR:-}" ]]; then
+    docker compose -f docker-compose.yml -f docker-compose.mail.yml -f docker-compose.coverage.yml "$@"
+  else
+    docker compose -f docker-compose.yml -f docker-compose.mail.yml "$@"
+  fi
+}
 cleanup() {
   code=$?
   if [[ $code -ne 0 ]]; then

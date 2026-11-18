@@ -17,3 +17,6 @@ tmp/
 .DS_Store
 .idea/
 .vscode/
+
+# Downloaded CI coverage and local coverdata
+coverage/

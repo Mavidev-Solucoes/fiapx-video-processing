@@ -125,24 +125,34 @@ Um segundo usuário não consegue consultar ou baixar jobs e notificações de o
 
 ## Testes, cobertura e evidências
 
+### Testes locais
+
 ```bash
 go test -race -covermode=atomic -coverprofile=coverage.out ./...
 go tool cover -func=coverage.out
-go tool cover -html=coverage.out # opcional: relatório navegável local
+go tool cover -html=coverage.out # relatório navegável de cobertura dos testes Go locais
 go vet ./...
-bash scripts/smoke-intake.sh
-bash scripts/smoke-processing.sh
-bash scripts/smoke-monitoring.sh
-bash scripts/smoke-email.sh
 ```
 
-O job **Go build, vet and tests** do GitHub Actions executa os testes com detector de race e cobertura, publica o percentual agregado no resumo do job e salva `coverage.out` e `coverage-summary.txt` como artifact **`go-coverage-report`** (retenção de 30 dias). Para baixar: abra a execução do workflow e procure **Artifacts → go-coverage-report**. **Não existe percentual mínimo exigido nem bloqueio por threshold**: o perfil mede a cobertura dos testes Go e não substitui as provas E2E em contêineres.
+Os testes de persistência PostgreSQL usam um banco real quando `FIAPX_TEST_DATABASE_URL` está definido; sem essa variável, são ignorados no ambiente local. Na CI, um PostgreSQL descartável é criado automaticamente, com credenciais aleatórias de teste.
 
-Além disso, a CI executa build, `go vet`, validação do JavaScript, builds Docker e **quatro cenários de integração** (intake/RabbitMQ, FFmpeg/ZIP, Prometheus/Grafana e SMTP/Mailpit). As provas cobrem recuperação do broker, isolamento entre usuários, notificações e recuperação de processamento. Os scripts E2E **apagam volumes de teste** ao terminar; não os execute sobre dados importantes.
+### Gate de cobertura de 80%
+
+O workflow `.github/workflows/ci.yml` exige **cobertura mínima de 80,0% dos statements Go**, considerando todas as packages de `./...`, inclusive API, workers, filas, persistência, armazenamento e inicialização. A cobertura não exclui código de produção.
+
+- O job `go` executa os testes com race detector e produz `coverage.out` e `coverage-summary.txt` (`go-coverage-report`).
+- Os **quatro jobs E2E** (intake, FFmpeg/ZIP, monitoramento e SMTP/Mailpit) executam API e worker instrumentados apenas em CI via `docker-compose.coverage.yml`, salvando dados reais em `GOCOVERDIR`.
+- O job `coverage` combina a cobertura de testes Go e integração **por bloco de código-fonte único**; blocos executados por ambos não são contados duas vezes. `scripts/merge-go-coverage.py` implementa a união e é testado por `scripts/test-merge-go-coverage.py`.
+- O resultado consolidado é salvo como artifact **`go-coverage-combined`**, com `combined.out`, `combined-summary.txt` e `integration.out`. O comando `scripts/check-coverage.sh` exige no mínimo **80,0%**; `scripts/test-coverage-gate.sh` verifica esse limite em casos de fronteira.
+- Uma falha no gate impede o job de publicar as imagens no GHCR. Os relatórios são enviados como artifacts **antes** de validar o limite, permitindo diagnosticar regressões.
+
+**Resultado verificado:** **81,0% (774/955 statements)** na execução [CI #44176884918](https://github.com/Mavidev-Solucoes/fiapx-video-processing/actions/runs/44176884918), sem exclusão de packages. Os percentuais dependem do conjunto de testes e devem ser conferidos novamente a cada release. A cobertura indica linhas exercitadas, não substitui revisão da qualidade dos testes nem as asserções end-to-end.
+
+Os scripts E2E apagam volumes temporários de teste ao finalizar. **Não execute os scripts de integração sobre dados importantes**. O comando `bash scripts/deploy-local.sh` é apropriado para executar a stack local sem apagar dados.
 
 ## CI/CD e deployment
 
-- **CI/CD:** `.github/workflows/ci.yml` — testes e verificações obrigatórios; o job `publish` depende de **todos os seis jobs de validação** e roda somente em `push` para `main`, com `packages: write` concedido apenas a ele.
+- **CI/CD:** `.github/workflows/ci.yml` — testes e verificações obrigatórios; o job `publish` depende dos **seis jobs de validação** e do job adicional **`coverage`** e roda somente em `push` para `main`, com `packages: write` concedido apenas a ele.
 - **Publicação GHCR:** as imagens API e worker recebem tags `latest` e SHA do commit. Não há `workflow_run` privilegiado nem execução de código obtido de um workflow anterior. Verifique a publicação e os checks no CI da revisão `main` utilizada na entrega.
 - **Deployment local a partir do código:** `bash scripts/deploy-local.sh`.
 - **Deployment com imagens publicadas:** `FIAPX_TAG=<SHA> bash scripts/deploy-release.sh` (autentique-se com `docker login ghcr.io` caso as imagens não estejam públicas).

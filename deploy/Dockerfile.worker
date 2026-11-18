@@ -4,10 +4,16 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/worker ./cmd/worker
+# Instrumented images are built only for coverage CI, never for production.
+ARG FIAPX_COVERAGE=0
+RUN if [ "$FIAPX_COVERAGE" = "1" ]; then \
+      CGO_ENABLED=0 GOOS=linux go build -cover -covermode=atomic -coverpkg=./... -o /out/worker ./cmd/worker; \
+    else \
+      CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/worker ./cmd/worker; \
+    fi
 
 FROM alpine:3.21
-RUN apk add --no-cache ffmpeg && addgroup -S fiapx && adduser -S -G fiapx fiapx
+RUN apk add --no-cache ffmpeg && addgroup -S -g 10001 fiapx && adduser -S -G fiapx -u 10001 fiapx
 COPY --from=build /out/worker /usr/local/bin/worker
 USER fiapx
 ENTRYPOINT ["/usr/local/bin/worker"]

@@ -73,7 +73,7 @@ O projeto inclui um perfil opcional `monitoring` com **Prometheus** (coleta de m
 - `scripts/smoke-intake.sh`: aceita upload mesmo após parar RabbitMQ e demonstra reenfileiramento.
 - `scripts/smoke-email.sh`: verifica email capturado pelo Mailpit, falha do servidor SMTP e reenvio após recuperação.
 - `scripts/smoke-processing.sh`: processa dois vídeos reais com workers paralelos, confere ZIP, acesso por usuário, duplicidade e falha terminal, consulta notificação privada, confirma leitura e recupera uma lease simulada como expirada.
-- `.github/workflows/ci.yml`: executa testes Go com race detector e perfil de cobertura (`coverage.out` e `coverage-summary.txt` como artifact), quatro E2E (intake, processamento, monitoramento, e-mail), e valida que Prometheus/Grafana capturam métricas reais.
+- `.github/workflows/ci.yml`: executa testes Go com detector de race e PostgreSQL real, quatro E2E com binários Go instrumentados (intake, processamento, monitoramento e e-mail). O job `coverage` une os perfis por bloco de código-fonte, sem excluir packages ou duplicar statements, e exige **mínimo 80% de cobertura global** via `scripts/check-coverage.sh`. Artifacts: `go-coverage-report` (unitário) e `go-coverage-combined` (unitário + E2E), disponíveis mesmo quando o limiar falha. O dashboard do Grafana também é verificado em E2E.
 - `.github/workflows/ci.yml`: o job `publish` publica imagens no GHCR somente após todos os jobs de validação concluírem com sucesso, em um `push` para `main`; o token com escrita em pacotes é limitado a esse job.
 
 Veja [matriz de requisitos](requirements.md) e [roteiro de demonstração](demo.md).

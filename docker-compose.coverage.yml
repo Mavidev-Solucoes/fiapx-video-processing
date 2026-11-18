@@ -1,0 +1,18 @@
+# Opt-in for CI integration coverage; never enabled for release builds.
+services:
+  api:
+    build:
+      args:
+        FIAPX_COVERAGE: "1"
+    environment:
+      GOCOVERDIR: /coverage
+    volumes:
+      - ${FIAPX_COVERAGE_DIR:?CI coverage directory required}:/coverage
+  worker:
+    build:
+      args:
+        FIAPX_COVERAGE: "1"
+    environment:
+      GOCOVERDIR: /coverage
+    volumes:
+      - ${FIAPX_COVERAGE_DIR:?CI coverage directory required}:/coverage

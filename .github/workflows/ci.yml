@@ -30,6 +30,17 @@ jobs:
         run: go build ./cmd/api ./cmd/worker
       - name: Vet
         run: go vet ./...
+      - name: Test coverage threshold enforcement
+        run: bash scripts/test-coverage-gate.sh
+      - name: Start PostgreSQL for transactional repository tests
+        run: |
+          # CI-only ephemeral password; no credentials hardcoded in the workflow.
+          password="$(openssl rand -hex 24)"
+          echo "::add-mask::$password"
+          export POSTGRES_PASSWORD="$password"
+          printf 'POSTGRES_PASSWORD=%s\nFIAPX_TEST_DATABASE_URL=postgres://fiapx:%s@127.0.0.1:5432/fiapx?sslmode=disable\n' "$password" "$password" >> "$GITHUB_ENV"
+          docker compose up -d --wait postgres
+          docker compose run --rm schema-migrate
       - name: Tests with race detector and coverage
         run: |
           go test -race -covermode=atomic -coverprofile=coverage.out ./...
@@ -68,41 +79,177 @@ jobs:
     name: Integration smoke - durable video intake
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      FIAPX_COVERAGE_DIR: /tmp/fiapx-coverage-intake
+      COMPOSE_FILE: docker-compose.yml:docker-compose.coverage.yml
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare private Go coverage directory
+        run: |
+          mkdir -p "$FIAPX_COVERAGE_DIR"
+          chmod 0700 "$FIAPX_COVERAGE_DIR"
+          sudo chown 10001:10001 "$FIAPX_COVERAGE_DIR"
       - name: Run Compose upload and broker-recovery smoke test
         run: bash scripts/smoke-intake.sh
+
+      - name: Restore coverage ownership for CI artifact upload
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" "$FIAPX_COVERAGE_DIR"
+      - name: Upload Go integration coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage-intake
+          path: /tmp/fiapx-coverage-intake/cov*
+          if-no-files-found: error
+          retention-days: 30
 
   processing:
     name: E2E - FFmpeg, ZIP and user isolation
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      FIAPX_COVERAGE_DIR: /tmp/fiapx-coverage-processing
+      COMPOSE_FILE: docker-compose.yml:docker-compose.coverage.yml
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare private Go coverage directory
+        run: |
+          mkdir -p "$FIAPX_COVERAGE_DIR"
+          chmod 0700 "$FIAPX_COVERAGE_DIR"
+          sudo chown 10001:10001 "$FIAPX_COVERAGE_DIR"
       - name: Run two-worker processing and download smoke test
         run: bash scripts/smoke-processing.sh
+
+      - name: Restore coverage ownership for CI artifact upload
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" "$FIAPX_COVERAGE_DIR"
+      - name: Upload Go integration coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage-processing
+          path: /tmp/fiapx-coverage-processing/cov*
+          if-no-files-found: error
+          retention-days: 30
 
   monitoring:
     name: Integration smoke - monitoring stack
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      FIAPX_COVERAGE_DIR: /tmp/fiapx-coverage-monitoring
+      COMPOSE_FILE: docker-compose.yml:docker-compose.coverage.yml
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare private Go coverage directory
+        run: |
+          mkdir -p "$FIAPX_COVERAGE_DIR"
+          chmod 0700 "$FIAPX_COVERAGE_DIR"
+          sudo chown 10001:10001 "$FIAPX_COVERAGE_DIR"
       - name: Validate Grafana dashboard, Prometheus scrapes and job metrics
         run: bash scripts/smoke-monitoring.sh
+
+      - name: Restore coverage ownership for CI artifact upload
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" "$FIAPX_COVERAGE_DIR"
+      - name: Upload Go integration coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage-monitoring
+          path: /tmp/fiapx-coverage-monitoring/cov*
+          if-no-files-found: error
+          retention-days: 30
 
   email:
     name: E2E - SMTP failure email delivery
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      FIAPX_COVERAGE_DIR: /tmp/fiapx-coverage-email
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare private Go coverage directory
+        run: |
+          mkdir -p "$FIAPX_COVERAGE_DIR"
+          chmod 0700 "$FIAPX_COVERAGE_DIR"
+          sudo chown 10001:10001 "$FIAPX_COVERAGE_DIR"
       - name: Verify Mailpit delivery and outage recovery
         run: bash scripts/smoke-email.sh
 
+      - name: Restore coverage ownership for CI artifact upload
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" "$FIAPX_COVERAGE_DIR"
+      - name: Upload Go integration coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage-email
+          path: /tmp/fiapx-coverage-email/cov*
+          if-no-files-found: error
+          retention-days: 30
+
+
+  coverage:
+    name: Enforce 80% combined Go coverage
+    needs: [go, intake, processing, monitoring, email]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: go-coverage-report
+          path: coverage/unit
+      - uses: actions/download-artifact@v4
+        with:
+          name: go-coverage-intake
+          path: coverage/intake
+      - uses: actions/download-artifact@v4
+        with:
+          name: go-coverage-processing
+          path: coverage/processing
+      - uses: actions/download-artifact@v4
+        with:
+          name: go-coverage-monitoring
+          path: coverage/monitoring
+      - uses: actions/download-artifact@v4
+        with:
+          name: go-coverage-email
+          path: coverage/email
+      - name: Test coverage aggregation against duplicate and inconsistent blocks
+        run: python3 scripts/test-merge-go-coverage.py
+      - name: Merge unit and real container execution coverage
+        run: |
+          go tool covdata textfmt -i=coverage/intake,coverage/processing,coverage/monitoring,coverage/email -o=coverage/integration.out
+          python3 scripts/merge-go-coverage.py
+          go tool cover -func=coverage/combined.out | tee coverage/combined-summary.txt
+          {
+            echo '### Go coverage (unit tests + real container execution)'
+            echo '```text'
+            tail -n 1 coverage/combined-summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload aggregate coverage evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage-combined
+          path: |
+            coverage/combined.out
+            coverage/combined-summary.txt
+            coverage/integration.out
+          if-no-files-found: error
+          retention-days: 30
+      - name: Enforce minimum 80% Go statement coverage
+        run: bash scripts/check-coverage.sh coverage/combined-summary.txt
+
   publish:
     name: Publish verified API and worker images
-    needs: [go, containers, intake, processing, monitoring, email]
+    needs: [go, containers, intake, processing, monitoring, email, coverage]
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     permissions:
